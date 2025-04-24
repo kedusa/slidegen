@@ -197,7 +197,7 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
     html = f"""<!DOCTYPE html><html><head><style> body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }} .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }} h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }} .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }} .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }} .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }} .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }} .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }} .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }} .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }} .shipping-details {{ flex-grow: 1; }} .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }} .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }} .shipping-price {{ font-weight: 600; font-size: 14px; text-align: right; min-width: 60px; color: #333; margin-left: 10px; }} .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }} .variant-label {{ position: absolute; top: 10px; right: 10px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['electric_violet']}; color: {PDQ_COLORS['electric_violet']}; font-weight: 600; font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }} </style></head><body><div class="container"><h2>Shipping method</h2>{f'<div class="variant-label">VARIANT</div>' if is_variant else ''}<div class="shipping-option selected"><div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div><div class="shipping-details"><div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{standard_price}</div></div><div class="shipping-option"><div class="radio radio-unselected"><div class="radio-dot"></div></div><div class="shipping-details"><div class="shipping-title">Rush Shipping* (2 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{rush_price}</div></div><div class="footnote">*Includes $1.49 processing fee</div></div></body></html>"""
     return html
 
-def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 300)):
+def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 350)): # Increased height
     """ Convert HTML content to an image using html2image """
     try:
         temp_dir = tempfile.gettempdir()
@@ -206,7 +206,7 @@ def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600
         unique_filename = f"{os.path.splitext(os.path.basename(output_path))[0]}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}.png"
         full_output_path = os.path.join(temp_dir, unique_filename)
 
-        logger.info(f"Attempting HTML screenshot to: {full_output_path}")
+        logger.info(f"Attempting HTML screenshot to: {full_output_path} with size {size}")
         paths = hti.screenshot(html_str=html_content, save_as=unique_filename)
 
         if not paths or not os.path.exists(paths[0]):
@@ -243,6 +243,7 @@ def generate_shipping_options(old_price="$7.95", new_price="$5.00"):
     control_html = generate_shipping_html(old_price, "$24.95", is_variant=False)
     variant_html = generate_shipping_html(new_price, "$24.95", is_variant=True)
     logger.info("Converting HTML to images...")
+    # Using the updated html_to_image which uses 600x350
     control_image = html_to_image(control_html, output_path="control_shipping.png")
     variant_image = html_to_image(variant_html, output_path="variant_shipping.png")
     logger.info("Shipping option image generation complete.")
@@ -301,7 +302,7 @@ def extract_from_pdf(pdf_file):
         logger.error(f"PDF Error: {e}", exc_info=True)
     return pdf_content
 
-# --- Slide Content Generation Helper (Keep as is) ---
+# --- Slide Content Generation Helper ---
 class PDQSlideGeneratorHelper:
     """ Helper class for generating slide content like hypothesis, KPIs, etc. """
     def __init__(self):
@@ -385,14 +386,13 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
                        timeline_str, success_criteria, checkouts_required_str,
                        control_image, variant_image, supporting_data_image=None):
     """Creates a PowerPoint slide precisely matching the reference image layout."""
-    # --- Wrap entire function in try-except for safety ---
     try:
         prs = Presentation()
         prs.slide_width = Inches(13.33); prs.slide_height = Inches(7.5)
         slide_layout = prs.slide_layouts[6]; slide = prs.slides.add_slide(slide_layout)
         background = slide.background; fill = background.fill; fill.solid(); fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["revolver"])
 
-        # --- Layout Constants ---
+        # --- Layout Constants (Adjusted for taller images) ---
         LEFT_MARGIN = Inches(0.4); TOP_MARGIN = Inches(0.4); RIGHT_MARGIN = Inches(0.4); BOTTOM_MARGIN = Inches(0.3)
         GRID_BOX_WIDTH = Inches(2.0)
         GRID_BOX_HEIGHT = Inches(1.5)
@@ -408,21 +408,23 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         hyp_width = TOTAL_GRID_WIDTH
         CONTROL_VAR_TITLE_HEIGHT=Inches(0.3); CONTROL_VAR_GAP=Inches(0.1)
 
-        # --- Vertical positioning ---
+        # --- Vertical positioning (Adjusted for taller images) ---
         CONTROL_TITLE_TOP = HYPOTHESIS_TOP
+        CONTROL_CONTAINER_HEIGHT = Inches(2.1) # Increased height
         CONTROL_CONTAINER_TOP = CONTROL_TITLE_TOP + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        CONTROL_CONTAINER_HEIGHT = Inches(2.0)
 
+        VARIANT_CONTAINER_HEIGHT = Inches(2.1) # Increased height
+        # Adjust variant top based on new control height + gap
         VARIANT_TITLE_TOP = CONTROL_CONTAINER_TOP + CONTROL_CONTAINER_HEIGHT + Inches(0.2)
         VARIANT_CONTAINER_TOP = VARIANT_TITLE_TOP + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        VARIANT_CONTAINER_HEIGHT = Inches(2.0)
 
         logo_size=Inches(0.6)
 
         # --- Helper: Add Rounded Rect Shape with Text ---
         def add_rounded_rect_with_text(left, top, width, height, bg_color_hex, title_text="", title_icon="", title_color_hex=PDQ_COLORS["melrose"], title_font_size=Pt(12.5), content_text="", content_color_hex=PDQ_COLORS["magnolia"], content_font_size=Pt(10.5), content_align=PP_ALIGN.LEFT, title_align=PP_ALIGN.LEFT, bold_title=True, center_content_vertical=False):
             try:
-                shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+                # Ensure dimensions are integers for pptx
+                shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, int(left), int(top), int(width), int(height))
                 shape.fill.solid(); shape.fill.fore_color.rgb = hex_to_rgbcolor(bg_color_hex); shape.line.fill.background()
                 tf = shape.text_frame; tf.word_wrap = True;
                 tf.margin_left = Inches(0.15); tf.margin_right = Inches(0.15);
@@ -507,19 +509,15 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
                 logger.info(f"Successfully placed/resized {context}: Final Size W={pic.width/Inches(1):.2f}\", H={pic.height/Inches(1):.2f}\" at L={pic.left/Inches(1):.2f}\", T={pic.top/Inches(1):.2f}\"")
                 return pic
             except Exception as e:
-                # Log the error with context
                 logger.error(f"Error placing {context} image in shape: {e}", exc_info=True)
-                # Re-raise the exception so the main try-except block catches it
                 raise e
 
         # --- Build Slide Elements ---
-        logo_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, LEFT_MARGIN, TOP_MARGIN, logo_size, logo_size);
-        logo_box.fill.solid(); logo_box.fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"]);
-        logo_box.line.fill.background()
+        logo_box = add_rounded_rect_with_text(LEFT_MARGIN, TOP_MARGIN, logo_size, logo_size, PDQ_COLORS["electric_violet"])
 
         title_left = LEFT_MARGIN + logo_size + Inches(0.2);
         title_width = hyp_width - (logo_size + Inches(0.2));
-        title_box = slide.shapes.add_textbox(title_left, TOP_MARGIN, title_width, logo_size);
+        title_box = slide.shapes.add_textbox(int(title_left), int(TOP_MARGIN), int(title_width), int(logo_size)); # Cast dimensions
         tf_title = title_box.text_frame;
         tf_title.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE;
         p_title = tf_title.add_paragraph();
@@ -573,18 +571,16 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
                                   content_align=PP_ALIGN.CENTER, center_content_vertical=True)
 
         img_padding = Inches(0.07)
+        # Use the adjusted heights
         control_container_with_title_top = CONTROL_TITLE_TOP
         control_container_with_title_height = CONTROL_CONTAINER_HEIGHT + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        control_container = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, RIGHT_COL_LEFT,
-                                                 control_container_with_title_top, RIGHT_COL_WIDTH,
-                                                 control_container_with_title_height)
-        control_container.fill.solid()
-        control_container.fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["white"])
-        control_container.line.fill.background()
+        control_container = add_rounded_rect_with_text(RIGHT_COL_LEFT, control_container_with_title_top,
+                                                      RIGHT_COL_WIDTH, control_container_with_title_height,
+                                                      PDQ_COLORS["white"]) # Use helper for consistency
 
         control_title_left = RIGHT_COL_LEFT + Inches(0.15)
-        control_title_box = slide.shapes.add_textbox(control_title_left, CONTROL_TITLE_TOP - Inches(0.05),
-                                                   RIGHT_COL_WIDTH - Inches(0.3), CONTROL_VAR_TITLE_HEIGHT)
+        control_title_box = slide.shapes.add_textbox(int(control_title_left), int(CONTROL_TITLE_TOP - Inches(0.05)),
+                                                   int(RIGHT_COL_WIDTH - Inches(0.3)), int(CONTROL_VAR_TITLE_HEIGHT)) # Cast dimensions
         ctrl_tf = control_title_box.text_frame
         ctrl_tf.margin_left=0; ctrl_tf.margin_right=0; ctrl_tf.margin_top=0; ctrl_tf.margin_bottom=0
         ctrl_p = ctrl_tf.add_paragraph()
@@ -594,24 +590,23 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         ctrl_p.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["black"])
 
         control_image_top = CONTROL_TITLE_TOP + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        place_image_in_shape(control_image, control_container, slide.shapes,
-                            context="control_shipping",
-                            padding=(img_padding, control_image_top - control_container_with_title_top + img_padding,
-                                    img_padding, img_padding),
-                            scale_factor=0.95)
+        if control_container: # Check if container was created
+            place_image_in_shape(control_image, control_container, slide.shapes,
+                                context="control_shipping",
+                                padding=(img_padding, control_image_top - control_container_with_title_top + img_padding,
+                                        img_padding, img_padding),
+                                scale_factor=0.95)
 
+        # Use the adjusted heights and top position
         variant_container_with_title_top = VARIANT_TITLE_TOP
         variant_container_with_title_height = VARIANT_CONTAINER_HEIGHT + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        variant_container = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, RIGHT_COL_LEFT,
-                                                 variant_container_with_title_top, RIGHT_COL_WIDTH,
-                                                 variant_container_with_title_height)
-        variant_container.fill.solid()
-        variant_container.fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["white"])
-        variant_container.line.fill.background()
+        variant_container = add_rounded_rect_with_text(RIGHT_COL_LEFT, variant_container_with_title_top,
+                                                      RIGHT_COL_WIDTH, variant_container_with_title_height,
+                                                      PDQ_COLORS["white"])
 
         variant_title_left = RIGHT_COL_LEFT + Inches(0.15)
-        variant_title_box = slide.shapes.add_textbox(variant_title_left, VARIANT_TITLE_TOP - Inches(0.05),
-                                                   RIGHT_COL_WIDTH - Inches(0.3), CONTROL_VAR_TITLE_HEIGHT)
+        variant_title_box = slide.shapes.add_textbox(int(variant_title_left), int(VARIANT_TITLE_TOP - Inches(0.05)),
+                                                   int(RIGHT_COL_WIDTH - Inches(0.3)), int(CONTROL_VAR_TITLE_HEIGHT)) # Cast dimensions
         var_tf = variant_title_box.text_frame
         var_tf.margin_left=0; var_tf.margin_right=0; var_tf.margin_top=0; var_tf.margin_bottom=0
         var_p = var_tf.add_paragraph()
@@ -621,36 +616,18 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         var_p.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["black"])
 
         variant_image_top = VARIANT_TITLE_TOP + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        var_pic = place_image_in_shape(variant_image, variant_container, slide.shapes,
-                                      context="variant_shipping",
-                                      padding=(img_padding, variant_image_top - variant_container_with_title_top + img_padding,
-                                              img_padding, img_padding),
-                                      scale_factor=0.95)
+        if variant_container: # Check if container was created
+            var_pic = place_image_in_shape(variant_image, variant_container, slide.shapes,
+                                          context="variant_shipping",
+                                          padding=(img_padding, variant_image_top - variant_container_with_title_top + img_padding,
+                                                  img_padding, img_padding),
+                                          scale_factor=0.95)
 
-        # --- REMOVED VARIANT TAG ---
-        # if var_pic:
-        #     tag_width=Inches(0.55); tag_height=Inches(0.22)
-        #     tag_left=variant_container.left + variant_container.width - tag_width - Inches(0.12)
-        #     tag_top=variant_container.top + Inches(0.1)
-        #     variant_tag = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, tag_left, tag_top,
-        #                                        tag_width, tag_height)
-        #     variant_tag.fill.solid()
-        #     variant_tag.fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["white"])
-        #     variant_tag.line.color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"])
-        #     variant_tag.line.width = Pt(1)
-        #     tf_tag = variant_tag.text_frame
-        #     tf_tag.margin_left=0; tf_tag.margin_right=0; tf_tag.margin_top=0; tf_tag.margin_bottom=0
-        #     tf_tag.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE
-        #     p_tag = tf_tag.add_paragraph()
-        #     p_tag.text = "VARIANT"
-        #     p_tag.font.size = Pt(7); p_tag.font.bold = True; p_tag.font.name = 'Segoe UI'
-        #     p_tag.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"])
-        #     p_tag.alignment = PP_ALIGN.CENTER
-        # --- END REMOVED VARIANT TAG ---
+        # --- VARIANT TAG REMOVED ---
 
         footer_top = prs.slide_height - BOTTOM_MARGIN - Inches(0.55)
-        footer_box = slide.shapes.add_textbox(LEFT_MARGIN, footer_top,
-                                            prs.slide_width - LEFT_MARGIN - RIGHT_MARGIN, Inches(0.25))
+        footer_box = slide.shapes.add_textbox(int(LEFT_MARGIN), int(footer_top),
+                                            int(prs.slide_width - LEFT_MARGIN - RIGHT_MARGIN), int(Inches(0.25))) # Cast dimensions
         footer_frame = footer_box.text_frame
         footer_frame.margin_bottom = 0
         footer_para = footer_frame.add_paragraph()
@@ -673,10 +650,8 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         logger.info("PPTX slide created successfully.")
         return pptx_buffer
 
-    # Catch errors during PPTX generation specifically
     except Exception as pptx_e:
         logger.error(f"Error during create_proper_pptx function: {pptx_e}", exc_info=True)
-        # Return None or raise the exception to be caught by the main block
         return None
 
 
@@ -684,7 +659,7 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
 def get_download_link(buffer, filename, text):
      """Generate a download link for the given file buffer"""
      try:
-         if not buffer: # Check if buffer is None (e.g., if PPTX creation failed)
+         if not buffer:
              logger.error("Cannot create download link: buffer is None.")
              return f'<span class="error-box">PPTX generation failed. Cannot create download link.</span>'
          if isinstance(buffer, io.BytesIO): file_bytes = buffer.getvalue()
@@ -697,14 +672,13 @@ def get_download_link(buffer, filename, text):
          logger.error(f"Download link error: {e}", exc_info=True)
          return f'<span class="error-box">Error creating download link.</span>'
 
-# --- Slide Preview Function (Restored) ---
+# --- Slide Preview Function (Restored & Adjusted) ---
 def generate_slide_preview(slide_data):
     """ Generates a simplified PIL image preview of the target slide layout. """
     preview_width = 1000; preview_height = int(preview_width * 9 / 16);
     image = Image.new('RGB', (preview_width, preview_height), color=hex_to_rgb(PDQ_COLORS["revolver"]));
     draw = ImageDraw.Draw(image)
     try:
-        # Attempt to load fonts, use fallbacks if necessary
         font_bold = get_font("Segoe UI", 24, bold=True)
         font_reg = get_font("Segoe UI", 14)
         font_small = get_font("Segoe UI", 11)
@@ -714,7 +688,6 @@ def generate_slide_preview(slide_data):
         font_bold=ImageFont.load_default(); font_reg=ImageFont.load_default();
         font_small=ImageFont.load_default(); font_tiny_bold=ImageFont.load_default()
 
-    # Define layout constants for preview (simplified)
     LEFT_MARGIN_PX=30; TOP_MARGIN_PX=30; GRID_GAP_PX=10; LOGO_SIZE_PX=40;
     TITLE_LEFT_PX=LEFT_MARGIN_PX+LOGO_SIZE_PX+15;
     RIGHT_COL_LEFT_PX=preview_width*0.58;
@@ -722,9 +695,8 @@ def generate_slide_preview(slide_data):
     BOX_BG=hex_to_rgb(PDQ_COLORS["valentino"]);
     TEXT_COLOR=hex_to_rgb(PDQ_COLORS["magnolia"]);
     TITLE_COLOR=hex_to_rgb(PDQ_COLORS["melrose"])
-    BOTTOM_MARGIN = 30 # Approximate bottom margin
+    BOTTOM_MARGIN = 30
 
-    # Draw elements
     draw.rounded_rectangle([LEFT_MARGIN_PX, TOP_MARGIN_PX, LEFT_MARGIN_PX+LOGO_SIZE_PX, TOP_MARGIN_PX+LOGO_SIZE_PX], radius=5, fill=hex_to_rgb(PDQ_COLORS["electric_violet"]))
     draw.text((TITLE_LEFT_PX, TOP_MARGIN_PX + 5), slide_data.get('title', 'A/B Test'), fill=TEXT_COLOR, font=font_bold)
 
@@ -732,26 +704,24 @@ def generate_slide_preview(slide_data):
     draw.rounded_rectangle([LEFT_MARGIN_PX, hyp_top, LEFT_MARGIN_PX+hyp_width, hyp_top+hyp_height], radius=8, fill=BOX_BG);
     draw.text((LEFT_MARGIN_PX+15, hyp_top+10), "✓ Hypothesis", fill=TITLE_COLOR, font=font_reg)
     hyp_text=slide_data.get('hypothesis', '...')[:100] + ('...' if len(slide_data.get('hypothesis', '')) > 100 else '');
-    draw.text((LEFT_MARGIN_PX+15, hyp_top+40), hyp_text, fill=TEXT_COLOR, font=font_small) # Wrap text might be needed for longer hypotheses
+    draw.text((LEFT_MARGIN_PX+15, hyp_top+40), hyp_text, fill=TEXT_COLOR, font=font_small)
 
     grid_top=hyp_top+hyp_height+GRID_GAP_PX; box_w=(hyp_width-GRID_GAP_PX)/2; box_h=70;
     draw.rounded_rectangle([LEFT_MARGIN_PX, grid_top, LEFT_MARGIN_PX+box_w, grid_top+box_h], radius=8, fill=BOX_BG);
     draw.text((LEFT_MARGIN_PX+15, grid_top+10),"👥 Segment", fill=TITLE_COLOR, font=font_reg);
     draw.rounded_rectangle([LEFT_MARGIN_PX+box_w+GRID_GAP_PX, grid_top, LEFT_MARGIN_PX+hyp_width, grid_top+box_h], radius=8, fill=BOX_BG);
     draw.text((LEFT_MARGIN_PX+box_w+GRID_GAP_PX+15, grid_top+10),"📅 Timeline", fill=TITLE_COLOR, font=font_reg)
-    # Add more grid boxes if needed for full preview
 
-    control_top=TOP_MARGIN_PX+LOGO_SIZE_PX+30; # Align top with hypothesis box for simplicity
-    control_height=(preview_height-control_top-BOTTOM_MARGIN-GRID_GAP_PX)/2-20;
+    # Adjusted heights for preview to reflect PPTX changes
+    control_top=TOP_MARGIN_PX+LOGO_SIZE_PX+30;
+    control_height=int((preview_height-control_top-BOTTOM_MARGIN-GRID_GAP_PX)/2 * 1.05); # Slightly taller
     variant_top=control_top+control_height+GRID_GAP_PX+30
 
-    # Draw Control/Variant placeholders
-    draw.text((RIGHT_COL_LEFT_PX, control_top-25), "Control", fill=hex_to_rgb(PDQ_COLORS["black"]), font=font_reg) # Black title
+    draw.text((RIGHT_COL_LEFT_PX, control_top-25), "Control", fill=hex_to_rgb(PDQ_COLORS["black"]), font=font_reg)
     draw.rounded_rectangle([RIGHT_COL_LEFT_PX, control_top, RIGHT_COL_LEFT_PX+RIGHT_COL_WIDTH_PX, control_top+control_height], radius=8, fill=hex_to_rgb(PDQ_COLORS["white"]), outline=hex_to_rgb(PDQ_COLORS["moon_raker"]));
-    # Try to draw placeholder image if available
     ctrl_img_preview = slide_data.get('control_image')
     if ctrl_img_preview and isinstance(ctrl_img_preview, Image.Image):
-        ctrl_img_preview.thumbnail((int(RIGHT_COL_WIDTH_PX*0.8), int(control_height*0.8))) # Resize thumbnail
+        ctrl_img_preview.thumbnail((int(RIGHT_COL_WIDTH_PX*0.8), int(control_height*0.8)))
         img_x = int(RIGHT_COL_LEFT_PX + (RIGHT_COL_WIDTH_PX - ctrl_img_preview.width) / 2)
         img_y = int(control_top + (control_height - ctrl_img_preview.height) / 2)
         image.paste(ctrl_img_preview, (img_x, img_y))
@@ -759,25 +729,19 @@ def generate_slide_preview(slide_data):
         draw.text((RIGHT_COL_LEFT_PX+20, control_top+20), "(Control Img Preview)", fill=hex_to_rgb(PDQ_COLORS["grey_text"]), font=font_reg)
 
 
-    draw.text((RIGHT_COL_LEFT_PX, variant_top-25), "Variant B (example)", fill=hex_to_rgb(PDQ_COLORS["black"]), font=font_reg) # Black title
+    draw.text((RIGHT_COL_LEFT_PX, variant_top-25), "Variant B (example)", fill=hex_to_rgb(PDQ_COLORS["black"]), font=font_reg)
     draw.rounded_rectangle([RIGHT_COL_LEFT_PX, variant_top, RIGHT_COL_LEFT_PX+RIGHT_COL_WIDTH_PX, variant_top+control_height], radius=8, fill=hex_to_rgb(PDQ_COLORS["white"]), outline=hex_to_rgb(PDQ_COLORS["moon_raker"]));
-     # Try to draw placeholder image if available
     var_img_preview = slide_data.get('variant_image')
     if var_img_preview and isinstance(var_img_preview, Image.Image):
-        var_img_preview.thumbnail((int(RIGHT_COL_WIDTH_PX*0.8), int(control_height*0.8))) # Resize thumbnail
+        var_img_preview.thumbnail((int(RIGHT_COL_WIDTH_PX*0.8), int(control_height*0.8)))
         img_x = int(RIGHT_COL_LEFT_PX + (RIGHT_COL_WIDTH_PX - var_img_preview.width) / 2)
         img_y = int(variant_top + (control_height - var_img_preview.height) / 2)
         image.paste(var_img_preview, (img_x, img_y))
     else:
         draw.text((RIGHT_COL_LEFT_PX+20, variant_top+20), "(Variant Img Preview)", fill=hex_to_rgb(PDQ_COLORS["grey_text"]), font=font_reg)
 
-    # --- REMOVED VARIANT TAG FROM PREVIEW ---
-    # tag_w,tag_h=50,18; tag_x=RIGHT_COL_LEFT_PX+RIGHT_COL_WIDTH_PX-tag_w-10; tag_y=variant_top+10;
-    # draw.rounded_rectangle([tag_x, tag_y, tag_x+tag_w, tag_y+tag_h], radius=3, fill=hex_to_rgb(PDQ_COLORS["white"]), outline=hex_to_rgb(PDQ_COLORS["electric_violet"]));
-    # draw.text((tag_x+5, tag_y+1), "VARIANT", fill=hex_to_rgb(PDQ_COLORS["electric_violet"]), font=font_tiny_bold)
-    # --- END REMOVED VARIANT TAG FROM PREVIEW ---
+    # --- VARIANT TAG ALREADY REMOVED FROM PREVIEW ---
 
-    # Footer text
     draw.text((preview_width-250, preview_height-25), "PDQ A/B Test | ... | Confidential", fill=TITLE_COLOR, font=font_small)
 
     logger.info("Generated slide preview image.")
@@ -798,8 +762,6 @@ st.markdown("---")
 # Display general errors if any occurred during the last run
 if st.session_state.error_message:
     st.error(f"❌ An error occurred: {st.session_state.error_message}")
-    # Optionally clear the error after displaying it
-    # st.session_state.error_message = None
 
 st.sidebar.header("📥 Input Parameters")
 supporting_data_file = st.sidebar.file_uploader("1. Upload Supporting Data (PNG or PDF)", type=["png", "pdf"])
@@ -919,10 +881,9 @@ if generate_button:
                 logger.error("create_proper_pptx returned None. PPTX generation failed.")
                 st.error("Failed to generate the PowerPoint file due to an internal error.")
                 st.session_state.error_message = "PPTX generation failed (check logs for details)."
-                # No st.stop() here, allow rerun to show error
             else:
                 logger.info("PPTX buffer created successfully.")
-                st.session_state.slide_generated = True # Only set if successful
+                st.session_state.slide_generated = True
                 st.session_state.output_buffer = output_buffer
 
             # --- Update Session State (even if PPTX failed, for preview/debug) ---
@@ -937,7 +898,7 @@ if generate_button:
         except Exception as e:
             st.error(f"❌ An unexpected error occurred during slide generation: {e}")
             logger.exception("Error during slide generation button press:")
-            st.session_state.slide_generated = False # Ensure not marked as generated on error
+            st.session_state.slide_generated = False
             st.session_state.output_buffer = None
             st.session_state.error_message = str(e)
 
@@ -946,7 +907,6 @@ if generate_button:
 
 
 # --- Display Results Section ---
-# This block runs on subsequent reruns after the button is pressed and state is set
 if st.session_state.slide_generated and st.session_state.output_buffer:
     logger.info("Displaying results section (slide_generated=True, output_buffer exists)...")
     try:
@@ -987,10 +947,10 @@ if st.session_state.slide_generated and st.session_state.output_buffer:
                          st.write("**Extracted Metrics:**")
                          st.table(metrics_data)
                          logger.info("Metrics table displayed.")
-            elif not supporting_data_file: # Check if file was provided in the first place
+            elif not supporting_data_file:
                  st.info("No supporting data image was provided.")
                  logger.info("No supporting data file provided initially.")
-            else: # File was provided but image is missing/invalid
+            else:
                  st.warning("Supporting data image preview not available (check processing logs).")
                  logger.warning("Supporting data image not available or invalid in session state for display.")
 
@@ -1082,3 +1042,4 @@ elif not st.session_state.error_message and not generate_button:
 # --- Custom Footer ---
 footer_year = datetime.datetime.now().year; footer_left_text = "PDQ A/B Test Slide Generator | Streamlining Test Documentation"; footer_right_text = f"PDQ © {footer_year}"
 st.markdown(f"""<div class="custom-footer"><div class="footer-left">{footer_left_text}</div><div class="footer-right">{footer_right_text}</div></div>""", unsafe_allow_html=True)
+
