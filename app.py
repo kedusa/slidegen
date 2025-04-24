@@ -426,40 +426,40 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         except Exception as e: logger.error(f"Error adding rounded rect '{title_text}': {e}", exc_info=True); return None
 
     # --- Helper: Place Image Inside a Shape ---
-    def place_image_in_shape(img_obj, target_shape, slide_shapes, context="image", padding=Inches(0.1), scale_factor=1.0):
-        """Places and resizes a PIL image inside a target pptx shape."""
-        if not isinstance(img_obj, Image.Image): logger.warning(f"Invalid image type for {context}"); return None
-        if target_shape is None: logger.warning(f"Target shape is None for {context}"); return None
+def place_image_in_shape(img_obj, target_shape, slide_shapes, context="image", padding=Inches(0.1), scale_factor=1.0):
+    """Places and resizes a PIL image inside a target pptx shape."""
+    if not isinstance(img_obj, Image.Image): logger.warning(f"Invalid image type for {context}"); return None
+    if target_shape is None: logger.warning(f"Target shape is None for {context}"); return None
 
-        try:
-            if isinstance(padding, (list, tuple)) and len(padding) == 4: pad_l, pad_t, pad_r, pad_b = padding
-            else: pad_l = pad_t = pad_r = pad_b = padding
+    try:
+        if isinstance(padding, (list, tuple)) and len(padding) == 4: pad_l, pad_t, pad_r, pad_b = padding
+        else: pad_l = pad_t = pad_r = pad_b = padding
 
-            inner_left = target_shape.left + pad_l; inner_top = target_shape.top + pad_t
-            inner_width = (target_shape.width - pad_l - pad_r) * scale_factor
-            inner_height = (target_shape.height - pad_t - pad_b) * scale_factor
+        inner_left = target_shape.left + pad_l; inner_top = target_shape.top + pad_t
+        inner_width = (target_shape.width - pad_l - pad_r) * scale_factor
+        inner_height = (target_shape.height - pad_t - pad_b) * scale_factor
 
-            if inner_width <= 0 or inner_height <= 0: logger.error(f"Invalid inner bounds for {context} in shape: W={inner_width}, H={inner_height}"); return None
+        if inner_width <= 0 or inner_height <= 0: logger.error(f"Invalid inner bounds for {context} in shape: W={inner_width}, H={inner_height}"); return None
 
-            logger.info(f"Placing {context}: Original size {img_obj.size}. Target Bounds: L={inner_left/Inches(1):.2f}\", T={inner_top/Inches(1):.2f}\", W={inner_width/Inches(1):.2f}\", H={inner_height/Inches(1):.2f}\"")
-            img_byte_arr = io.BytesIO(); img_obj.save(img_byte_arr, format='PNG'); img_byte_arr = img_byte_arr.getvalue()
-            if not img_byte_arr: raise ValueError("Image saving to bytes failed.")
+        logger.info(f"Placing {context}: Original size {img_obj.size}. Target Bounds: L={inner_left/Inches(1):.2f}\", T={inner_top/Inches(1):.2f}\", W={inner_width/Inches(1):.2f}\", H={inner_height/Inches(1):.2f}\"")
+        img_byte_arr = io.BytesIO(); img_obj.save(img_byte_arr, format='PNG'); img_byte_arr = img_byte_arr.getvalue()
+        if not img_byte_arr: raise ValueError("Image saving to bytes failed.")
 
-            try: pic = slide_shapes.add_picture(io.BytesIO(img_byte_arr), inner_left, inner_top, width=inner_width)
-            except Exception as add_pic_err: logger.error(f"add_picture failed for {context}: {add_pic_err}", exc_info=True); return None
+        try: pic = slide_shapes.add_picture(io.BytesIO(img_byte_arr), inner_left, inner_top, width=inner_width)
+        except Exception as add_pic_err: logger.error(f"add_picture failed for {context}: {add_pic_err}", exc_info=True); return None
 
-            # Better scaling to maximize image size while preserving aspect ratio
-            img_ratio = img_obj.height / img_obj.width
-            pic.height = int(pic.width * img_ratio)
-            
-            # Center the image
-            pic.left = inner_left + ((target_shape.width - pad_l - pad_r) - pic.width) / 2
-            pic.top = inner_top + ((target_shape.height - pad_t - pad_b) - pic.height) / 2 if inner_height > pic.height else inner_top
-            
-            logger.info(f"Successfully placed/resized {context}: Final Size W={pic.width/Inches(1):.2f}\", H={pic.height/Inches(1):.2f}\" at L={pic.left/Inches(1):.2f}\", T={pic.top/Inches(1):.2f}\"")
-            return pic
-        except Exception as e: logger.error(f"Error placing {context} image in shape: {e}", exc_info=True); return None
-
+        # Better scaling to maximize image size while preserving aspect ratio
+        img_ratio = img_obj.height / img_obj.width
+        pic.height = int(pic.width * img_ratio)
+        
+        # Center the image - FIXED: Cast float values to integers
+        pic.left = int(inner_left + ((target_shape.width - pad_l - pad_r) - pic.width) / 2)
+        pic.top = int(inner_top + ((target_shape.height - pad_t - pad_b) - pic.height) / 2 if inner_height > pic.height else inner_top)
+        
+        logger.info(f"Successfully placed/resized {context}: Final Size W={pic.width/Inches(1):.2f}\", H={pic.height/Inches(1):.2f}\" at L={pic.left/Inches(1):.2f}\", T={pic.top/Inches(1):.2f}\"")
+        return pic
+    except Exception as e: logger.error(f"Error placing {context} image in shape: {e}", exc_info=True); return None
+        
     # --- Build Slide Elements ---
     # Logo & Title
     logo_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, LEFT_MARGIN, TOP_MARGIN, logo_size, logo_size); 
