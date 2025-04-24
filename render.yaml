@@ -1,16 +1,10 @@
 services:
   - type: web
     name: slidegen
-    env: python
-    repo: https://github.com/kedusa/slidegen.git # Verify this is correct
-    pythonVersion: '3.9' # Keep this specific version
-    systemPackages:
-      - tesseract-ocr
-      - tesseract-ocr-eng
-      - libgl1-mesa-glx
-      - libglib2.0-0
-      # Add these packages for Tesseract
-      - libleptonica-dev
-      - libtesseract-dev
-    buildCommand: "pip install --no-cache-dir -r requirements.txt"
-    startCommand: "streamlit run app.py --server.port ${PORT} --server.address=0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false" # Verify app.py
+    env: docker
+    repo: https://github.com/kedusa/slidegen.git
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8501
