@@ -51,6 +51,28 @@ except pytesseract.TesseractNotFoundError:
                 return "OCR unavailable: Tesseract not installed", image
             except Exception as e:
                 return f"Error: {str(e)}", Image.new('RGB', (640, 480))
+# Check if tesseract is installed and provide fallback
+try:
+    # Test if tesseract is available
+    tesseract_version = pytesseract.get_tesseract_version()
+    logger.info(f"Tesseract OCR found: version {tesseract_version}")
+    TESSERACT_AVAILABLE = True
+except pytesseract.TesseractNotFoundError:
+    logger.warning("Tesseract OCR not found. OCR features will be disabled.")
+    TESSERACT_AVAILABLE = False
+    
+    # Create fallback extraction function that won't crash
+    def safe_extract_text_from_image(image_input):
+        """Fallback function when Tesseract is not available"""
+        if isinstance(image_input, Image.Image): 
+            return "OCR unavailable: Tesseract not installed", image_input
+        else:
+            try:
+                image = Image.open(image_input)
+                return "OCR unavailable: Tesseract not installed", image
+            except Exception as e:
+                return f"Error: {str(e)}", Image.new('RGB', (640, 480))
+
 # PDQ Color Palette
 PDQ_COLORS = {
     "revolver": "#231333", "electric_violet": "#894DFF", "electric_violet_2": "#6B2BEF",
@@ -145,6 +167,12 @@ def extract_text_from_image(image_input):
         else:
             if image_input is None or image_input.size == 0: logger.warning("extract_text_from_image received empty file."); return "", Image.new('RGB', (1, 1))
             image = Image.open(image_input)
+            
+        # Check if Tesseract is available
+        if not globals().get('TESSERACT_AVAILABLE', False):
+            logger.warning("Tesseract not available, skipping OCR")
+            return "OCR unavailable: Tesseract not installed", image
+            
         img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
         thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1] # Corrected constants
@@ -154,7 +182,7 @@ def extract_text_from_image(image_input):
     except UnidentifiedImageError: st.error("Invalid image file."); logger.error("UnidentifiedImageError."); return "", Image.new('RGB', (100, 30))
     except pytesseract.TesseractNotFoundError: st.error("Tesseract not found."); logger.error("Tesseract not found."); return "", Image.new('RGB', (100, 30))
     except Exception as e: st.error(f"OCR Error: {e}"); logger.error(f"OCR Error: {e}", exc_info=True); return "", Image.new('RGB', (640, 480))
-
+        
 def extract_metrics_from_supporting_data(image_obj):
     """Extract key metrics from a PIL image object using OCR."""
     internal_default_metrics = { "conversion_rate": "N/A", "total_checkout": "N/A", "checkouts": "N/A", "orders": "N/A", "shipping_revenue": "N/A", "aov": "N/A" }
