@@ -2,11 +2,13 @@ services:
   - type: web
     name: slidegen
     env: python
-    buildCommand: pip install --no-cache-dir -r requirements.txt
-    startCommand: streamlit run app.py --server.port ${PORT} --server.address=0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false
-    pythonVersion: 3.9
+    repo: https://github.com/kedusa/slidegen.git # Verify this is correct
+    pythonVersion: '3.9' # Keep this specific version
     systemPackages:
       - tesseract-ocr
       - tesseract-ocr-eng
       - libgl1-mesa-glx
       - libglib2.0-0
+      # - nano # Optional: Add a simple package like nano for testing
+    buildCommand: "pip install --no-cache-dir -r requirements.txt"
+    startCommand: "streamlit run app.py --server.port ${PORT} --server.address=0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false" # Verify app.py
