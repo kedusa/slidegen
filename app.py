@@ -192,6 +192,8 @@ def extract_metrics_from_supporting_data(image_obj):
 # --- HTML Variant Generation ---
 def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_variant=False):
     """ Generate HTML content for shipping options display """
+    # NOTE: The variant label in the HTML itself is kept for the image generation
+    # but the corresponding label in the PPTX will be removed later.
     html = f"""<!DOCTYPE html><html><head><style> body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }} .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }} h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }} .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }} .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }} .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }} .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }} .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }} .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }} .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }} .shipping-details {{ flex-grow: 1; }} .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }} .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }} .shipping-price {{ font-weight: 600; font-size: 14px; text-align: right; min-width: 60px; color: #333; margin-left: 10px; }} .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }} .variant-label {{ position: absolute; top: 10px; right: 10px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['electric_violet']}; color: {PDQ_COLORS['electric_violet']}; font-weight: 600; font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }} </style></head><body><div class="container"><h2>Shipping method</h2>{f'<div class="variant-label">VARIANT</div>' if is_variant else ''}<div class="shipping-option selected"><div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div><div class="shipping-details"><div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{standard_price}</div></div><div class="shipping-option"><div class="radio radio-unselected"><div class="radio-dot"></div></div><div class="shipping-details"><div class="shipping-title">Rush Shipping* (2 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{rush_price}</div></div><div class="footnote">*Includes $1.49 processing fee</div></div></body></html>"""
     return html
 
@@ -552,7 +554,6 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
             support_img_padding_horz = Inches(0.25)
             support_img_title_clearance = Inches(0.8)
             support_img_padding_bottom = Inches(0.25)
-            # Place supporting data image
             place_image_in_shape(
                 supporting_data_image, support_box_shape, slide.shapes, context="supporting_data",
                 padding=(support_img_padding_horz, support_img_title_clearance,
@@ -593,7 +594,6 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         ctrl_p.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["black"])
 
         control_image_top = CONTROL_TITLE_TOP + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        # Place control image
         place_image_in_shape(control_image, control_container, slide.shapes,
                             context="control_shipping",
                             padding=(img_padding, control_image_top - control_container_with_title_top + img_padding,
@@ -621,31 +621,32 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
         var_p.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["black"])
 
         variant_image_top = VARIANT_TITLE_TOP + CONTROL_VAR_TITLE_HEIGHT + CONTROL_VAR_GAP
-        # Place variant image
         var_pic = place_image_in_shape(variant_image, variant_container, slide.shapes,
                                       context="variant_shipping",
                                       padding=(img_padding, variant_image_top - variant_container_with_title_top + img_padding,
                                               img_padding, img_padding),
                                       scale_factor=0.95)
 
-        if var_pic:
-            tag_width=Inches(0.55); tag_height=Inches(0.22)
-            tag_left=variant_container.left + variant_container.width - tag_width - Inches(0.12)
-            tag_top=variant_container.top + Inches(0.1)
-            variant_tag = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, tag_left, tag_top,
-                                               tag_width, tag_height)
-            variant_tag.fill.solid()
-            variant_tag.fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["white"])
-            variant_tag.line.color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"])
-            variant_tag.line.width = Pt(1)
-            tf_tag = variant_tag.text_frame
-            tf_tag.margin_left=0; tf_tag.margin_right=0; tf_tag.margin_top=0; tf_tag.margin_bottom=0
-            tf_tag.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE
-            p_tag = tf_tag.add_paragraph()
-            p_tag.text = "VARIANT"
-            p_tag.font.size = Pt(7); p_tag.font.bold = True; p_tag.font.name = 'Segoe UI'
-            p_tag.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"])
-            p_tag.alignment = PP_ALIGN.CENTER
+        # --- REMOVED VARIANT TAG ---
+        # if var_pic:
+        #     tag_width=Inches(0.55); tag_height=Inches(0.22)
+        #     tag_left=variant_container.left + variant_container.width - tag_width - Inches(0.12)
+        #     tag_top=variant_container.top + Inches(0.1)
+        #     variant_tag = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, tag_left, tag_top,
+        #                                        tag_width, tag_height)
+        #     variant_tag.fill.solid()
+        #     variant_tag.fill.fore_color.rgb = hex_to_rgbcolor(PDQ_COLORS["white"])
+        #     variant_tag.line.color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"])
+        #     variant_tag.line.width = Pt(1)
+        #     tf_tag = variant_tag.text_frame
+        #     tf_tag.margin_left=0; tf_tag.margin_right=0; tf_tag.margin_top=0; tf_tag.margin_bottom=0
+        #     tf_tag.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE
+        #     p_tag = tf_tag.add_paragraph()
+        #     p_tag.text = "VARIANT"
+        #     p_tag.font.size = Pt(7); p_tag.font.bold = True; p_tag.font.name = 'Segoe UI'
+        #     p_tag.font.color.rgb = hex_to_rgbcolor(PDQ_COLORS["electric_violet"])
+        #     p_tag.alignment = PP_ALIGN.CENTER
+        # --- END REMOVED VARIANT TAG ---
 
         footer_top = prs.slide_height - BOTTOM_MARGIN - Inches(0.55)
         footer_box = slide.shapes.add_textbox(LEFT_MARGIN, footer_top,
@@ -770,10 +771,11 @@ def generate_slide_preview(slide_data):
     else:
         draw.text((RIGHT_COL_LEFT_PX+20, variant_top+20), "(Variant Img Preview)", fill=hex_to_rgb(PDQ_COLORS["grey_text"]), font=font_reg)
 
-    # Draw Variant Tag
-    tag_w,tag_h=50,18; tag_x=RIGHT_COL_LEFT_PX+RIGHT_COL_WIDTH_PX-tag_w-10; tag_y=variant_top+10;
-    draw.rounded_rectangle([tag_x, tag_y, tag_x+tag_w, tag_y+tag_h], radius=3, fill=hex_to_rgb(PDQ_COLORS["white"]), outline=hex_to_rgb(PDQ_COLORS["electric_violet"]));
-    draw.text((tag_x+5, tag_y+1), "VARIANT", fill=hex_to_rgb(PDQ_COLORS["electric_violet"]), font=font_tiny_bold)
+    # --- REMOVED VARIANT TAG FROM PREVIEW ---
+    # tag_w,tag_h=50,18; tag_x=RIGHT_COL_LEFT_PX+RIGHT_COL_WIDTH_PX-tag_w-10; tag_y=variant_top+10;
+    # draw.rounded_rectangle([tag_x, tag_y, tag_x+tag_w, tag_y+tag_h], radius=3, fill=hex_to_rgb(PDQ_COLORS["white"]), outline=hex_to_rgb(PDQ_COLORS["electric_violet"]));
+    # draw.text((tag_x+5, tag_y+1), "VARIANT", fill=hex_to_rgb(PDQ_COLORS["electric_violet"]), font=font_tiny_bold)
+    # --- END REMOVED VARIANT TAG FROM PREVIEW ---
 
     # Footer text
     draw.text((preview_width-250, preview_height-25), "PDQ A/B Test | ... | Confidential", fill=TITLE_COLOR, font=font_small)
