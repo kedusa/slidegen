@@ -9,6 +9,8 @@ services:
       - tesseract-ocr-eng
       - libgl1-mesa-glx
       - libglib2.0-0
-      # - nano # Optional: Add a simple package like nano for testing
+      # Add these packages for Tesseract
+      - libleptonica-dev
+      - libtesseract-dev
     buildCommand: "pip install --no-cache-dir -r requirements.txt"
     startCommand: "streamlit run app.py --server.port ${PORT} --server.address=0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false" # Verify app.py
