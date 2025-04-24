@@ -30,7 +30,27 @@ logger = logging.getLogger("ABTestApp")
 # if os.name == 'nt':
 #     try: pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 #     except Exception: logger.error("Tesseract not found at default path. Please set manually if needed.")
-
+# Check if tesseract is installed and provide fallback
+try:
+    # Test if tesseract is available
+    tesseract_version = pytesseract.get_tesseract_version()
+    logger.info(f"Tesseract OCR found: version {tesseract_version}")
+    TESSERACT_AVAILABLE = True
+except pytesseract.TesseractNotFoundError:
+    logger.warning("Tesseract OCR not found. OCR features will be disabled.")
+    TESSERACT_AVAILABLE = False
+    
+    # Create fallback extraction function that won't crash
+    def safe_extract_text_from_image(image_input):
+        """Fallback function when Tesseract is not available"""
+        if isinstance(image_input, Image.Image): 
+            return "OCR unavailable: Tesseract not installed", image_input
+        else:
+            try:
+                image = Image.open(image_input)
+                return "OCR unavailable: Tesseract not installed", image
+            except Exception as e:
+                return f"Error: {str(e)}", Image.new('RGB', (640, 480))
 # PDQ Color Palette
 PDQ_COLORS = {
     "revolver": "#231333", "electric_violet": "#894DFF", "electric_violet_2": "#6B2BEF",
