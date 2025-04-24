@@ -8,9 +8,9 @@ WORKDIR /app
 RUN apt-get update && \
     # Set frontend to noninteractive to avoid prompts during apt-get install
     export DEBIAN_FRONTEND=noninteractive && \
-    # Pre-accept the EULA for Microsoft Core Fonts
-    echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections && \
     # Install all packages in a single layer
+    # REMOVED: ttf-mscorefonts-installer and cabextract to avoid EULA/install issues
+    # KEPT: fonts-liberation as a fallback font set
     apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -20,9 +20,7 @@ RUN apt-get update && \
     # Dependencies for Chromium / html2image
     chromium \
     chromium-driver \
-    # Font packages (EULA pre-accepted above)
-    cabextract \
-    ttf-mscorefonts-installer \
+    # Font packages (Using Liberation fonts as fallback)
     fonts-liberation \
     # Clean up apt cache afterwards to keep image size smaller
     && rm -rf /var/lib/apt/lists/*
@@ -37,7 +35,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Add a health check endpoint
-# Note: Health check might need adjustment if not using $PORT
 # Using 8501 here as well for consistency with the CMD instruction.
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
