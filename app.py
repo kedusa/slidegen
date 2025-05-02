@@ -21,6 +21,20 @@ from pptx.enum.shapes import MSO_SHAPE
 import datetime
 from html2image import Html2Image # Import html2image
 
+# Initialize session state variables
+if "slide_generated" not in st.session_state:
+    st.session_state.slide_generated = False
+if "output_buffer" not in st.session_state:
+    st.session_state.output_buffer = None
+if "slide_data" not in st.session_state:
+    st.session_state.slide_data = {}
+if "error_message" not in st.session_state:
+    st.session_state.error_message = None
+if "control_image_filename" not in st.session_state:
+    st.session_state.control_image_filename = None
+if "control_image_data" not in st.session_state:
+    st.session_state.control_image_data = None
+
 # --- Basic Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger("ABTestApp")
@@ -77,13 +91,13 @@ def get_font(name, size, bold=False, italic=False):
     except AttributeError: # Older PIL might not support size argument for load_default
         return ImageFont.load_default()
 
-
 # --- Streamlit Page Setup & CSS ---
+# DO NOT CHANGE - UI and Theme are fixed
 st.set_page_config(page_title="PDQ A/B Test Slide Generator", page_icon="🧪", layout="wide")
 # Define custom CSS
 st.markdown(f"""
     <style>
-    /* ... Keep your existing CSS ... */
+    /* ... Existing CSS - DO NOT CHANGE ... */
     .main {{ background-color: {PDQ_COLORS["magnolia"]}; }}
     .stApp {{ max-width: 1400px; margin: 0 auto; }}
     .success-box {{ padding: 1rem; border-radius: 0.5rem; background-color: rgba({hex_to_rgb(PDQ_COLORS["persian_green"])[0]}, {hex_to_rgb(PDQ_COLORS["persian_green"])[1]}, {hex_to_rgb(PDQ_COLORS["persian_green"])[2]}, 0.2); color: {PDQ_COLORS["persian_green"]}; margin-bottom: 1rem; border: 1px solid {PDQ_COLORS["persian_green"]}; }}
@@ -116,42 +130,234 @@ st.markdown(f"""
 
 
 # --- Core Image/Text Processing Functions ---
+
+# MODIFIED extract_text_from_image function to be more robust
 def extract_text_from_image(image_input):
     """Extract text from an image file or PIL object using OCR"""
     try:
+        image = None # Initialize image variable
+        input_type = "Unknown"
+        input_details = ""
+
         if isinstance(image_input, Image.Image):
             image = image_input
-            logger.info("Processing PIL image for OCR.")
-        elif hasattr(image_input, 'getvalue'): # Check if it's an UploadedFile object
-            logger.info(f"Processing uploaded file '{getattr(image_input, 'name', 'N/A')}' for OCR.")
-            image_bytes = image_input.getvalue()
+            input_type = "PIL Image"
+            input_details = f"size={image.size}, mode={image.mode}"
+            logger.info("Processing pre-loaded PIL image for OCR.")
+
+        elif hasattr(image_input, 'getvalue') and hasattr(image_input, 'name'): # Check if it's an UploadedFile object
+            input_type = "UploadedFile"
+            file_name = getattr(image_input, 'name', 'N/A')
+            # Use file_id and size for better tracking if available
+            file_id = getattr(image_input, 'id', 'N/A')
+            file_size = getattr(image_input, 'size', 'N/A')
+            input_details = f"name='{file_name}', id='{file_id}', size={file_size}"
+            logger.info(f"Processing uploaded file {input_details} for OCR.")
+
+            # Ensure pointer is at the beginning BEFORE reading bytes
+            try:
+                image_input.seek(0)
+                logger.debug(f"File pointer reset for {input_details}")
+            except Exception as seek_err:
+                logger.warning(f"Could not seek(0) on input file {input_details}: {seek_err}")
+                # Continue anyway, getvalue() might still work
+
+            image_bytes = image_input.getvalue() # Read fresh bytes
+
             if not image_bytes:
-                logger.warning("extract_text_from_image received empty file bytes.")
-                return "", None # Return None for image if invalid
-            image = Image.open(io.BytesIO(image_bytes))
+                logger.warning(f"extract_text_from_image received empty file bytes for {input_details}.")
+                # Return empty text and None for image if bytes are empty
+                return "", None
+
+            try:
+                # Open the image from the fresh bytes using BytesIO
+                image = Image.open(io.BytesIO(image_bytes))
+                logger.debug(f"Successfully opened image from bytes for {input_details}. Size: {image.size}, Mode: {image.mode}")
+            except UnidentifiedImageError:
+                st.error(f"Invalid or corrupted image file uploaded: {file_name}")
+                logger.error(f"UnidentifiedImageError during Image.open for {input_details}.")
+                return "", None
+            except Exception as img_open_e:
+                 st.error(f"Error opening image file {file_name}: {img_open_e}")
+                 logger.error(f"Error during Image.open for {input_details}: {img_open_e}", exc_info=True)
+                 return "", None
         else:
-            logger.error(f"Unsupported input type for OCR: {type(image_input)}")
+            input_type = str(type(image_input))
+            logger.error(f"Unsupported input type for OCR: {input_type}")
+            st.error("Internal error: Invalid data type received for image processing.")
             return "", None
 
-        img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-        extracted_text = pytesseract.image_to_string(thresh, config='--psm 6')
-        logger.info(f"OCR extracted {len(extracted_text)} characters.")
-        return extracted_text, image
+        # Check if image was successfully loaded/passed
+        if image is None:
+             logger.error(f"Image object is None after input processing. Input type: {input_type}, Details: {input_details}")
+             st.error("Internal error: Failed to load image data.")
+             return "", None
 
-    except UnidentifiedImageError:
-        st.error("Invalid or corrupted image file provided.")
-        logger.error("UnidentifiedImageError during OCR processing.")
-        return "", None
-    except pytesseract.TesseractNotFoundError:
-        st.error("Tesseract installation issue detected. Please check deployment logs.")
-        logger.error("TesseractNotFoundError - This should not happen in the Docker env!")
-        return "", None
+        # --- Perform OCR ---
+        try:
+            # Ensure image is in RGB format for OpenCV compatibility
+            pil_image_rgb = image.convert('RGB')
+            img_cv = cv2.cvtColor(np.array(pil_image_rgb), cv2.COLOR_RGB2BGR)
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+            thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+            extracted_text = pytesseract.image_to_string(thresh, config='--psm 6')
+            logger.info(f"OCR extracted {len(extracted_text)} characters from {input_details}.")
+            # Return the originally opened/passed PIL image (not the cv2 one)
+            return extracted_text, image
+        except pytesseract.TesseractNotFoundError:
+            st.error("Tesseract OCR engine not found. Please check the system configuration.")
+            logger.critical("TesseractNotFoundError - Check system PATH or Tesseract installation in environment.")
+            # Return the image even if OCR fails, it might be needed visually
+            return "OCR Error: Tesseract not found", image
+        except Exception as ocr_e:
+            st.warning(f"An error occurred during text extraction (OCR) for {input_details}: {ocr_e}") # Use warning for non-critical OCR errors
+            logger.warning(f"OCR Error processing {input_details}: {ocr_e}", exc_info=True)
+            # Return the image even if OCR fails, with an error message as text
+            return f"OCR Error: {ocr_e}", image
+
     except Exception as e:
-        st.error(f"An unexpected error occurred during OCR: {e}")
-        logger.error(f"Unexpected OCR Error: {e}", exc_info=True)
+        # Catch-all for unexpected errors during input handling phase
+        st.error(f"An unexpected error occurred preparing the image for OCR: {e}")
+        logger.error(f"Unexpected Error in extract_text_from_image: {e}", exc_info=True)
         return "", None
+
+# REVISED ensure_fresh_control_image using session state for explicit caching control
+def ensure_fresh_control_image(control_layout_file):
+    """
+    Ensures a fresh control image is processed only when the uploaded file changes.
+    Uses st.session_state for explicit cache management based on file identity.
+    """
+    # Initialize session state keys if they don't exist
+    if 'processed_control_image_key' not in st.session_state:
+        st.session_state.processed_control_image_key = None
+    if 'processed_control_image' not in st.session_state:
+        st.session_state.processed_control_image = None
+
+    if control_layout_file is None:
+        # If no file is uploaded, ensure any previous state is cleared
+        if st.session_state.processed_control_image_key is not None:
+            st.session_state.processed_control_image_key = None
+            st.session_state.processed_control_image = None
+            logger.info("Control file removed. Cleared control image from session state.")
+        return None
+
+    # --- Generate a unique key for the current file ---
+    # Best effort: use file_id if available, otherwise combine name and size.
+    # Using file_id is generally more reliable than name+size.
+    file_id = getattr(control_layout_file, 'id', None)
+    file_name = getattr(control_layout_file, 'name', 'unknown')
+    file_size = getattr(control_layout_file, 'size', 'unknown')
+
+    if file_id:
+        current_file_key = f"control_{file_id}"
+    else:
+        # Fallback if file_id is not available
+        current_file_key = f"control_{file_name}_{file_size}"
+
+    logger.debug(f"Ensuring control image. Current file key: '{current_file_key}', Stored key: '{st.session_state.processed_control_image_key}'")
+
+    # --- Check session state ---
+    # Check if the key matches the last processed key AND the image exists in state
+    if (st.session_state.processed_control_image_key == current_file_key and
+        isinstance(st.session_state.processed_control_image, Image.Image)):
+
+        logger.info(f"Returning cached control image from session state for key: '{current_file_key}'")
+        return st.session_state.processed_control_image
+    else:
+        # --- File has changed or not processed yet ---
+        action = "Processing new" if st.session_state.processed_control_image_key is None else "Processing changed"
+        logger.info(f"{action} control file. Key '{current_file_key}' requires processing.")
+
+        # Call the robust extraction function
+        _, control_image_input_pil = extract_text_from_image(control_layout_file)
+
+        # Validate the result
+        if not isinstance(control_image_input_pil, Image.Image):
+            logger.error(f"Failed to process control layout image '{file_name}'. extract_text_from_image returned type: {type(control_image_input_pil)}")
+            st.error(f"Could not load the control image: {file_name}. Please check the file or try uploading again.")
+            # Clear potentially invalid state if processing failed
+            st.session_state.processed_control_image_key = None
+            st.session_state.processed_control_image = None
+            return None
+        else:
+            # --- Store the newly processed image and its key in session state ---
+            logger.info(f"Successfully processed fresh control image '{file_name}' -> PIL Image size: {control_image_input_pil.size}. Storing in session state with key '{current_file_key}'.")
+            # Make a copy before storing in session state to prevent potential
+            # downstream modifications affecting the cached version.
+            st.session_state.processed_control_image = control_image_input_pil.copy()
+            st.session_state.processed_control_image_key = current_file_key
+            # Return the original (or copied) PIL image for immediate use
+            return control_image_input_pil
+
+
+
+# --- Price Extraction Function ---
+# DO NOT CHANGE - Price extraction logic should remain dynamic
+def extract_prices_from_test_type(test_type):
+    """Extract control and variant prices from test description"""
+    logger.info(f"Extracting prices from test description: {test_type}")
+
+    # Pattern to find price pairs in different formats
+    control_pattern = r'control:?\s*\$?(\d+\.?\d*)|control\s+\$?(\d+\.?\d*)'
+    variant_pattern = r'variant:?\s*\$?(\d+\.?\d*)|variant\s+\$?(\d+\.?\d*)'
+
+    # Simple $ pattern as fallback
+    dollar_pattern = r'\$(\d+\.?\d*)'
+
+    # Try to extract control price
+    control_match = re.search(control_pattern, test_type, re.IGNORECASE)
+    control_price = None
+    if control_match:
+        # Get the first non-None group from the regex match
+        control_price = next((g for g in control_match.groups() if g is not None), None)
+        logger.info(f"Found explicit control price: {control_price}")
+
+    # Try to extract variant price
+    variant_match = re.search(variant_pattern, test_type, re.IGNORECASE)
+    variant_price = None
+    if variant_match:
+        # Get the first non-None group from the regex match
+        variant_price = next((g for g in variant_match.groups() if g is not None), None)
+        logger.info(f"Found explicit variant price: {variant_price}")
+
+    # If we couldn't find explicit control/variant prices, fall back to simple $ pattern
+    if not control_price or not variant_price:
+        logger.info("Explicit control/variant price not found, searching for $ values...")
+        all_prices = re.findall(dollar_pattern, test_type)
+        logger.info(f"Found price values: {all_prices}")
+        if len(all_prices) >= 2:
+            control_price = all_prices[0]
+            variant_price = all_prices[1]
+            logger.info(f"Using first two $ values: control={control_price}, variant={variant_price}")
+        elif len(all_prices) == 1:
+            control_price = all_prices[0]
+            # If we only found one price, assume the variant is slightly different
+            try:
+                variant_price = str(float(control_price) * 0.8)  # 20% discount as default
+                # Round to 2 decimal places
+                variant_price = str(round(float(variant_price), 2))
+                logger.info(f"Found only one price, assuming 20% discount for variant: control={control_price}, variant={variant_price}")
+            except ValueError:
+                # If conversion fails, use a default
+                variant_price = "5.00"
+                logger.warning(f"Could not calculate variant price from {control_price}, using default: {variant_price}")
+
+    # Set defaults if no prices found
+    if not control_price:
+        control_price = "7.95"
+        logger.info(f"No control price found, using default: {control_price}")
+
+    if not variant_price:
+        variant_price = "5.00"
+        logger.info(f"No variant price found, using default: {variant_price}")
+
+    # Format prices with $ sign if not already present
+    control_price_str = f"${control_price}" if not str(control_price).startswith("$") else control_price
+    variant_price_str = f"${variant_price}" if not str(variant_price).startswith("$") else variant_price
+
+    logger.info(f"Final extracted prices: Control={control_price_str}, Variant={variant_price_str}")
+    return control_price_str, variant_price_str
+
 
 def extract_metrics_from_supporting_data(image_obj):
     """Extract key metrics from a PIL image object using OCR."""
@@ -160,11 +366,13 @@ def extract_metrics_from_supporting_data(image_obj):
         logger.warning("extract_metrics needs PIL object. Received non-image or None.")
         return internal_default_metrics
     try:
+        # Use the robust extract_text_from_image function
         extracted_text, _ = extract_text_from_image(image_obj)
-        if not extracted_text:
-            logger.warning("No text extracted from supporting data image for metrics.")
+        if not extracted_text or extracted_text.startswith("OCR Error"):
+            logger.warning(f"No text or OCR error from supporting data image for metrics. OCR Result: '{extracted_text}'")
             return internal_default_metrics
 
+        # Existing regex patterns - kept as is
         conv_match = re.search(r'(?:conversion|checkout\s*conversion)\s*(?:rate)?[:\s]*(\d{1,3}(?:,\d{3})*\.?\d*%?|\d+\.?\d*%?)', extracted_text, re.IGNORECASE)
         total_co_match = re.search(r'(?:%|percent)\s*total\s*checkout[:\s]*(\d{1,3}(?:,\d{3})*\.?\d*%?|\d+\.?\d*%?)', extracted_text, re.IGNORECASE)
         checkouts_match = re.search(r'(?:#|number\s+of)?\s*Checkouts[:\s]*(\d{1,3}(?:,\d{3})*)', extracted_text, re.IGNORECASE)
@@ -190,6 +398,7 @@ def extract_metrics_from_supporting_data(image_obj):
         return internal_default_metrics
 
 # --- HTML Variant Generation ---
+# Kept as is, relates to variant generation, not control image handling
 def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_variant=False):
     """ Generate HTML content for shipping options display """
     # NOTE: The variant label in the HTML itself is kept for the image generation
@@ -197,12 +406,14 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
     html = f"""<!DOCTYPE html><html><head><style> body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }} .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }} h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }} .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }} .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }} .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }} .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }} .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }} .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }} .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }} .shipping-details {{ flex-grow: 1; }} .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }} .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }} .shipping-price {{ font-weight: 600; font-size: 14px; text-align: right; min-width: 60px; color: #333; margin-left: 10px; }} .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }} .variant-label {{ position: absolute; top: 10px; right: 10px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['electric_violet']}; color: {PDQ_COLORS['electric_violet']}; font-weight: 600; font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }} </style></head><body><div class="container"><h2>Shipping method</h2>{f'<div class="variant-label">VARIANT</div>' if is_variant else ''}<div class="shipping-option selected"><div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div><div class="shipping-details"><div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{standard_price}</div></div><div class="shipping-option"><div class="radio radio-unselected"><div class="radio-dot"></div></div><div class="shipping-details"><div class="shipping-title">Rush Shipping* (2 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{rush_price}</div></div><div class="footnote">*Includes $1.49 processing fee</div></div></body></html>"""
     return html
 
+# Kept as is
 def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 350)): # Increased height
     """ Convert HTML content to an image using html2image """
     try:
         temp_dir = tempfile.gettempdir()
         # Add --headless=new flag as suggested by Chrome error logs
         hti = Html2Image(output_path=temp_dir, size=size, custom_flags=['--headless=new', '--no-sandbox', '--disable-gpu'])
+        # Create a more unique filename to avoid potential collisions in temp dir
         unique_filename = f"{os.path.splitext(os.path.basename(output_path))[0]}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}.png"
         full_output_path = os.path.join(temp_dir, unique_filename)
 
@@ -213,10 +424,11 @@ def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600
              raise RuntimeError(f"html2image failed to create the screenshot file at {paths[0] if paths else 'unknown path'}")
 
         logger.info(f"Screenshot successful: {paths[0]}")
-        img = Image.open(paths[0])
-        img_copy = img.copy()
-        img.close()
+        # Open, copy, then close immediately to release file handle
+        with Image.open(paths[0]) as img:
+            img_copy = img.copy()
 
+        # Attempt to remove the temporary file
         try:
             os.remove(paths[0])
             logger.info(f"Removed temporary screenshot: {paths[0]}")
@@ -228,28 +440,183 @@ def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600
     except Exception as e:
         st.error(f"Error converting HTML to image using html2image: {e}")
         logger.error(f"html_to_image error: {e}", exc_info=True)
+        # Generate placeholder on error
         placeholder = Image.new('RGB', size, color=hex_to_rgb(PDQ_COLORS["moon_raker"]))
         draw = ImageDraw.Draw(placeholder)
         try:
             font = get_font("Arial", 14)
             draw.text((10, 10), "Error generating image preview", fill=(0,0,0), font=font)
-        except: pass
+        except Exception: pass # Ignore font errors for placeholder
         return placeholder
 
-
+def extract_prices_from_test_type(test_type):
+    """Extract control and variant prices from test description"""
+    logger.info(f"Extracting prices from test description: {test_type}")
+    
+    # Pattern to find price pairs in different formats
+    control_pattern = r'control:?\s*\$?(\d+\.?\d*)|control\s+\$?(\d+\.?\d*)'
+    variant_pattern = r'variant:?\s*\$?(\d+\.?\d*)|variant\s+\$?(\d+\.?\d*)'
+    
+    # Simple $ pattern as fallback
+    dollar_pattern = r'\$(\d+\.?\d*)'
+    
+    # Try to extract control price
+    control_match = re.search(control_pattern, test_type, re.IGNORECASE)
+    control_price = None
+    if control_match:
+        # Get the first non-None group from the regex match
+        control_price = next((g for g in control_match.groups() if g is not None), None)
+        logger.info(f"Found explicit control price: {control_price}")
+    
+    # Try to extract variant price
+    variant_match = re.search(variant_pattern, test_type, re.IGNORECASE)
+    variant_price = None
+    if variant_match:
+        # Get the first non-None group from the regex match
+        variant_price = next((g for g in variant_match.groups() if g is not None), None)
+        logger.info(f"Found explicit variant price: {variant_price}")
+    
+    # If we couldn't find explicit control/variant prices, fall back to simple $ pattern
+    if not control_price or not variant_price:
+        logger.info("Explicit control/variant price not found, searching for $ values...")
+        all_prices = re.findall(dollar_pattern, test_type)
+        logger.info(f"Found price values: {all_prices}")
+        if len(all_prices) >= 2:
+            control_price = all_prices[0]
+            variant_price = all_prices[1]
+            logger.info(f"Using first two $ values: control={control_price}, variant={variant_price}")
+        elif len(all_prices) == 1:
+            control_price = all_prices[0]
+            # If we only found one price, assume the variant is slightly different
+            try:
+                variant_price = str(float(control_price) * 0.8)  # 20% discount as default
+                # Round to 2 decimal places
+                variant_price = str(round(float(variant_price), 2))
+                logger.info(f"Found only one price, assuming 20% discount for variant: control={control_price}, variant={variant_price}")
+            except ValueError:
+                # If conversion fails, use a default
+                variant_price = "5.00"
+                logger.warning(f"Could not calculate variant price from {control_price}, using default: {variant_price}")
+    
+    # Set defaults if no prices found
+    if not control_price:
+        control_price = "7.95"
+        logger.info(f"No control price found, using default: {control_price}")
+    
+    if not variant_price:
+        variant_price = "5.00"
+        logger.info(f"No variant price found, using default: {variant_price}")
+    
+    # Format prices with $ sign if not already present
+    control_price_str = f"${control_price}" if not str(control_price).startswith("$") else control_price
+    variant_price_str = f"${variant_price}" if not str(variant_price).startswith("$") else variant_price
+    
+    logger.info(f"Final extracted prices: Control={control_price_str}, Variant={variant_price_str}")
+    return control_price_str, variant_price_str
+# Kept as is
 def generate_shipping_options(old_price="$7.95", new_price="$5.00"):
     """ Generate control and variant shipping option images """
-    logger.info("Generating shipping HTML for control and variant...")
+    logger.info(f"Generating shipping HTML for control and variant with prices: control={old_price}, variant={new_price}")
+    # Create a unique timestamp for this generation
+    timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
+
+    # Generate unique filenames with timestamp
+    control_filename = f"control_shipping_{timestamp}.png"
+    variant_filename = f"variant_shipping_{timestamp}.png"
+
     control_html = generate_shipping_html(old_price, "$24.95", is_variant=False)
     variant_html = generate_shipping_html(new_price, "$24.95", is_variant=True)
     logger.info("Converting HTML to images...")
-    # Using the updated html_to_image which uses 600x350
-    control_image = html_to_image(control_html, output_path="control_shipping.png")
-    variant_image = html_to_image(variant_html, output_path="variant_shipping.png")
+
+    # Use the timestamped filenames
+    control_image = html_to_image(control_html, output_path=control_filename)
+    variant_image = html_to_image(variant_html, output_path=variant_filename)
+
+    # Log the image sizes after generation
+    logger.info(f"Generated control shipping image with price {old_price} and size: {control_image.size if control_image else 'None'}")
+    logger.info(f"Generated variant shipping image with price {new_price} and size: {variant_image.size if variant_image else 'None'}")
+
     logger.info("Shipping option image generation complete.")
     return control_image, variant_image
 
+# Kept as is
+def create_price_variant(old_price, new_price):
+    """
+    Create control and variant images based on the HTML template with different prices.
+    This function ensures we use the HTML-based generation for a consistent look.
+
+    Args:
+        old_price: Original price string (e.g. "$7.95") - Used for the control image
+        new_price: New price string (e.g. "$5.00") - Used for the variant image
+
+    Returns:
+        tuple: (control_image, variant_image) as PIL Image objects
+    """
+    logger.info(f"Creating HTML-based variant image by changing price from {old_price} (Control) to {new_price} (Variant)")
+    try:
+        # Use the generate_shipping_options function which calls html_to_image
+        # Note: generate_shipping_options as provided earlier seems to use the *first* price for standard shipping
+        # in *both* control and variant HTML, and the *second* price for rush shipping.
+        # Reverting to the interpretation from the original code which mapped old_price to control standard, new_price to variant standard.
+        def generate_shipping_options_html(standard_price_control, standard_price_variant, rush_price="$24.95"):
+            logger.info(f"Generating shipping HTML for control and variant with prices: control_std={standard_price_control}, variant_std={standard_price_variant}, rush={rush_price}")
+            timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
+            control_filename = f"control_shipping_{timestamp}.png"
+            variant_filename = f"variant_shipping_{timestamp}.png"
+
+            # Control HTML: standard shipping is the 'old_price'
+            control_html = generate_shipping_html(standard_price_control, rush_price, is_variant=False)
+            # Variant HTML: standard shipping is the 'new_price'
+            variant_html = generate_shipping_html(standard_price_variant, rush_price, is_variant=True)
+
+            logger.info("Converting HTML to images...")
+            control_image = html_to_image(control_html, output_path=control_filename)
+            variant_image = html_to_image(variant_html, output_path=variant_filename)
+
+            logger.info(f"Generated control shipping image with price {standard_price_control} and size: {control_image.size if control_image else 'None'}")
+            logger.info(f"Generated variant shipping image with price {standard_price_variant} and size: {variant_image.size if variant_image else 'None'}")
+            logger.info("Shipping option image generation complete.")
+            return control_image, variant_image
+
+        # Call the internal HTML generation using the prices
+        control_image, variant_image = generate_shipping_options_html(old_price, new_price)
+
+
+        if not isinstance(control_image, Image.Image) or not isinstance(variant_image, Image.Image):
+            raise ValueError("Failed to generate valid images from HTML")
+
+        logger.info(f"create_price_variant successful. Control size: {control_image.size}, Variant size: {variant_image.size}")
+        return control_image, variant_image
+
+    except Exception as e:
+        logger.error(f"Error in create_price_variant: {e}", exc_info=True)
+        st.error("An error occurred while generating the price variant images.")
+        # In case of error, return placeholder images
+        size = (600, 350)
+        placeholder = Image.new('RGB', size, color=hex_to_rgb(PDQ_COLORS["moon_raker"]))
+        draw = ImageDraw.Draw(placeholder)
+        try:
+            font = get_font("Arial", 14)
+            draw.text((10, 10), f"Error generating price image.", fill=(0,0,0), font=font)
+            draw.text((10, 30), f"Control Price: {old_price}", fill=(0,0,0), font=font)
+            draw.text((10, 50), f"Variant Price: {new_price}", fill=(0,0,0), font=font)
+        except:
+            draw.text((10, 10), f"Error generating price image.", fill=(0,0,0))
+
+        control_copy = placeholder.copy()
+        variant_copy = placeholder.copy()
+        draw_v = ImageDraw.Draw(variant_copy)
+        try:
+            font_bold = get_font("Arial", 16, bold=True)
+            text_width, text_height = draw_v.textbbox((0,0), "VARIANT", font=font_bold)[2:]
+            draw_v.text((size[0] - text_width - 20, 20), "VARIANT", fill=(0,0,0), font=font_bold)
+        except:
+            draw_v.text((size[0] - 80, 20), "VARIANT", fill=(0,0,0))
+
+        return control_copy, variant_copy
+
 # --- PDF Processing ---
+# Kept as is
 def extract_from_pdf(pdf_file):
     """Extract content from PDF files using PyMuPDF"""
     pdf_content = []
@@ -258,6 +625,8 @@ def extract_from_pdf(pdf_file):
         return pdf_content
     try:
         logger.info(f"Processing PDF: {getattr(pdf_file, 'name', 'N/A')}")
+        # Ensure pointer is at beginning before reading
+        pdf_file.seek(0)
         pdf_bytes = pdf_file.read()
         if not pdf_bytes:
             logger.warning("Empty PDF file uploaded.")
@@ -272,7 +641,7 @@ def extract_from_pdf(pdf_file):
                 logger.debug(f"Page {page_num+1}: Found {len(image_list)} raw image entries.")
                 for img_index, img in enumerate(image_list):
                     xref = img[0]
-                    if xref == 0: continue
+                    if xref == 0: continue # Skip if xref is 0 (indicates invalid image entry)
                     try:
                         base_image = doc.extract_image(xref)
                         if not base_image:
@@ -281,6 +650,7 @@ def extract_from_pdf(pdf_file):
                         image_bytes = base_image["image"]
                         if image_bytes:
                             try:
+                                # Open image from bytes
                                 image = Image.open(io.BytesIO(image_bytes))
                                 page_images.append(image)
                                 logger.debug(f"Successfully extracted image {img_index+1} (xref: {xref}) from page {page_num+1}.")
@@ -291,6 +661,7 @@ def extract_from_pdf(pdf_file):
                         else:
                             logger.warning(f"Empty image bytes for xref {xref} on page {page_num+1}.")
                     except Exception as e:
+                        # Catch errors during extraction for a specific image
                         logger.warning(f"PDF Image Extraction Warning - Page {page_num+1}, Img Index {img_index+1} (xref: {xref}): {e}")
 
                 pdf_content.append({"page_num": page_num + 1, "text": page_text, "images": page_images})
@@ -303,6 +674,7 @@ def extract_from_pdf(pdf_file):
     return pdf_content
 
 # --- Slide Content Generation Helper ---
+# Kept as is
 class PDQSlideGeneratorHelper:
     """ Helper class for generating slide content like hypothesis, KPIs, etc. """
     def __init__(self):
@@ -329,24 +701,26 @@ class PDQSlideGeneratorHelper:
              "generic": ["this change addresses a key hypothesis from user research", "market trends support this type of modification", "data indicates an opportunity for improvement in this area"]
         }
     def generate_hypothesis(self, test_type, segment, supporting_data_text=""):
-         category = "generic"; test_type_lower = test_type.lower()
-         if any(word in test_type_lower for word in ["price", "$", "cost", "charge", "fee"]): category = "price"
-         elif any(word in test_type_lower for word in ["shipping", "delivery", "freight"]): category = "shipping"
-         elif any(word in test_type_lower for word in ["layout", "design", "ui", "ux", "interface", "position"]): category = "layout"
-         elif any(word in test_type_lower for word in ["message", "copy", "text", "wording", "cta", "button", "headline"]): category = "messaging"
-         expected_outcome = random.choice(self.outcome_templates[category]); rationale = random.choice(self.rationale_templates[category])
-         hypothesis = self.hypothesis_templates[category].format( segment=segment if segment else "users", expected_outcome=expected_outcome, rationale=rationale )
-         logger.info(f"Generated Hypothesis (Category: {category}): {hypothesis}")
-         return hypothesis
+        category = "generic"; test_type_lower = test_type.lower()
+        if any(word in test_type_lower for word in ["price", "$", "cost", "charge", "fee"]): category = "price"
+        elif any(word in test_type_lower for word in ["shipping", "delivery", "freight"]): category = "shipping"
+        elif any(word in test_type_lower for word in ["layout", "design", "ui", "ux", "interface", "position"]): category = "layout"
+        elif any(word in test_type_lower for word in ["message", "copy", "text", "wording", "cta", "button", "headline"]): category = "messaging"
+        expected_outcome = random.choice(self.outcome_templates[category]); rationale = random.choice(self.rationale_templates[category])
+        hypothesis = self.hypothesis_templates[category].format( segment=segment if segment else "users", expected_outcome=expected_outcome, rationale=rationale )
+        logger.info(f"Generated Hypothesis (Category: {category}): {hypothesis}")
+        return hypothesis
     def parse_test_type(self, test_type):
-         parts = test_type.split('—'); title = test_type.strip()
-         if len(parts) > 1: title = parts[0].strip()
-         else:
-            colon_split = test_type.split(':')
-            if len(colon_split) > 1 and len(colon_split[0]) < 30: title = colon_split[0].strip()
-         if len(title) > 50: title = title[:47] + "..."
-         logger.info(f"Parsed test type title: {title}")
-         return title
+        parts = test_type.split('—'); title = test_type.strip()
+        if len(parts) > 1:
+             # If there's an em dash, take the part before it as the main title
+             title = parts[0].strip()
+             # Potentially use parts[1] as subtitle/description if needed later
+             logger.info(f"Parsed test type: Title='{title}', Details='{parts[1].strip()}'")
+        else:
+             logger.info(f"Parsed test type (no dash): Title='{title}'")
+        return title
+
     def infer_goals_and_kpis(self, test_type):
         test_type_lower = test_type.lower(); goal, kpi, impact = "Improve Performance", "Conversion Rate (CVR)", "3-5%"
         if any(term in test_type_lower for term in ["price", "pricing", "cost", "$", "revenue", "aov", "value"]): goal, kpi, impact = "Increase Revenue", "Revenue Per Visitor (RPV)", "5-8%"
@@ -380,6 +754,23 @@ class PDQSlideGeneratorHelper:
          elif "engagement" in goal.lower() or "experience" in goal.lower(): criteria = f"Improvement in engagement metrics (e.g., {kpi})"
          logger.info(f"Determined Success Criteria: {criteria}")
          return criteria
+
+# --- NEW FUNCTION: Ensure fresh control image processing ---
+def ensure_fresh_control_image(control_layout_file):
+    """Ensures that we always process a fresh control image without caching issues."""
+    if control_layout_file is None:
+        logger.warning("No control layout file provided.")
+        return None
+    
+    logger.info(f"Processing control layout file: {getattr(control_layout_file, 'name', 'unknown')}")
+    _, control_image_input_pil = extract_text_from_image(control_layout_file)
+    
+    if not isinstance(control_image_input_pil, Image.Image):
+        logger.error("Failed to process control layout image.")
+        return None
+        
+    logger.info(f"Successfully processed fresh control image with size: {control_image_input_pil.size if control_image_input_pil else 'None'}")
+    return control_image_input_pil
 
 # --- PowerPoint Generation Function ---
 def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, elements_tags,
@@ -625,19 +1016,17 @@ def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, element
 
         # --- VARIANT TAG REMOVED ---
 
+        # --- Footer with dynamic date ---
         footer_top = prs.slide_height - BOTTOM_MARGIN - Inches(0.55)
         footer_box = slide.shapes.add_textbox(int(LEFT_MARGIN), int(footer_top),
-                                            int(prs.slide_width - LEFT_MARGIN - RIGHT_MARGIN), int(Inches(0.25))) # Cast dimensions
+                                            int(prs.slide_width - LEFT_MARGIN - RIGHT_MARGIN), int(Inches(0.25)))
         footer_frame = footer_box.text_frame
         footer_frame.margin_bottom = 0
         footer_para = footer_frame.add_paragraph()
 
-        try:
-            footer_date_str = datetime.datetime.strptime("April 23, 2025", '%B %d, %Y').strftime('%B %d, %Y')
-        except ValueError:
-            footer_date_str = datetime.datetime.now().strftime('%B %d, %Y')
-
-        footer_para.text = f"PDQ A/B Test | {footer_date_str} | Confidential"
+        # Use current date instead of hardcoded date
+        current_date = datetime.datetime.now().strftime('%B %d, %Y')
+        footer_para.text = f"PDQ A/B Test | {current_date} | Confidential"
         footer_para.font.size = Pt(9)
         footer_para.font.italic = True
         footer_para.font.name = 'Segoe UI'
@@ -747,25 +1136,126 @@ def generate_slide_preview(slide_data):
     logger.info("Generated slide preview image.")
     return image
 
+def create_price_variant(old_price, new_price):
+    """
+    Create control and variant images based on the HTML template with different prices.
+    This function ensures we use the HTML-based generation for a consistent look.
+    
+    Args:
+        old_price: Original price string (e.g. "$7.95")
+        new_price: New price string (e.g. "$5.00")
+        
+    Returns:
+        tuple: (control_image, variant_image) as PIL Image objects
+    """
+    logger.info(f"Creating HTML-based variant image by changing price from {old_price} to {new_price}")
+    try:
+        # Generate a unique timestamp to ensure we get fresh images
+        timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
+        
+        # Generate unique filenames with timestamp
+        control_filename = f"control_shipping_{timestamp}.png"
+        variant_filename = f"variant_shipping_{timestamp}.png"
+        
+        # Create HTML for both control and variant
+        control_html = generate_shipping_html(old_price, "$24.95", is_variant=False)
+        variant_html = generate_shipping_html(new_price, "$24.95", is_variant=True)
+        
+        logger.info("Converting HTML to images with fresh timestamp...")
+        
+        # Generate the images from HTML
+        control_image = html_to_image(control_html, output_path=control_filename)
+        variant_image = html_to_image(variant_html, output_path=variant_filename)
+        
+        # Log the image sizes for debugging
+        logger.info(f"Generated control image with size: {control_image.size if control_image else 'None'}")
+        logger.info(f"Generated variant image with size: {variant_image.size if variant_image else 'None'}")
+        
+        return control_image, variant_image
+        
+    except Exception as e:
+        logger.error(f"Error in create_price_variant: {e}", exc_info=True)
+        # In case of error, return placeholder images
+        placeholder = Image.new('RGB', (600, 350), color=hex_to_rgb(PDQ_COLORS["moon_raker"]))
+        draw = ImageDraw.Draw(placeholder)
+        try:
+            font = get_font("Arial", 14)
+            draw.text((10, 10), f"Error generating image. Old: {old_price}, New: {new_price}", 
+                     fill=(0,0,0), font=font)
+        except:
+            # Fallback if font fails
+            draw.text((10, 10), f"Error generating image", fill=(0,0,0))
+        
+        control_copy = placeholder.copy()
+        variant_copy = placeholder.copy()
+        draw_v = ImageDraw.Draw(variant_copy)
+        draw_v.text((10, 30), "VARIANT", fill=(0,0,0))
+        
+        return control_copy, variant_copy
 
 # --- Streamlit UI and Main Logic ---
 # Initialize session state keys if they don't exist
-if 'slide_generated' not in st.session_state: st.session_state.slide_generated = False
-if 'output_buffer' not in st.session_state: st.session_state.output_buffer = None
-if 'slide_data' not in st.session_state: st.session_state.slide_data = {}
-if 'error_message' not in st.session_state: st.session_state.error_message = None
+if 'control_image_pil' not in st.session_state:
+    st.session_state.control_image_pil = None
+if 'variant_image_pil' not in st.session_state: # Keep track of the variant image in state too
+    st.session_state.variant_image_pil = None
+if 'control_ocr_text' not in st.session_state:
+    st.session_state.control_ocr_text = ""
+if 'supporting_data_image_pil' not in st.session_state:
+    st.session_state.supporting_data_image_pil = None
+if 'supporting_data_ocr_text' not in st.session_state:
+    st.session_state.supporting_data_ocr_text = ""
+if 'extracted_metrics' not in st.session_state:
+    st.session_state.extracted_metrics = {}
+if 'pdf_text_content' not in st.session_state:
+    st.session_state.pdf_text_content = []
+if 'control_price' not in st.session_state:
+    st.session_state.control_price = "$7.95" # Default
+if 'variant_price' not in st.session_state:
+    st.session_state.variant_price = "$5.00" # Default
+if 'test_name' not in st.session_state:
+    st.session_state.test_name = ""
+if 'test_type' not in st.session_state:
+    st.session_state.test_type = ""
+if 'test_hypothesis' not in st.session_state:
+    st.session_state.test_hypothesis = ""
+if 'processed_data_file_id' not in st.session_state:
+    st.session_state.processed_data_file_id = None # Track the ID of the last processed supporting data file
+# Remove the 'control_image_filename' if it was just for tracking, the PIL object itself can be tracked.
+
 
 st.title("🧪 PDQ A/B Test Slide Generator")
 st.markdown("Generate professional A/B test slides matching the PDQ standard layout.")
 st.markdown("---")
 
 # Display general errors if any occurred during the last run
-if st.session_state.error_message:
+if st.session_state.get("error_message"):
     st.error(f"❌ An error occurred: {st.session_state.error_message}")
 
 st.sidebar.header("📥 Input Parameters")
 supporting_data_file = st.sidebar.file_uploader("1. Upload Supporting Data (PNG or PDF)", type=["png", "pdf"])
 control_layout_file = st.sidebar.file_uploader("2. Upload Control Layout Image (PNG)", type=["png"])
+if control_layout_file is not None:
+    current_control_filename = getattr(control_layout_file, 'name', None)
+    previous_filename = st.session_state.get('control_image_filename')
+    
+    if current_control_filename != previous_filename:
+        # Clear all cached data when a new file is uploaded
+        st.session_state.control_image_filename = current_control_filename
+        
+        # Clear any previously generated images
+        if 'slide_data' in st.session_state:
+            st.session_state.slide_data = {}
+        
+        # Force cache invalidation for image generation
+        for key in ['shipping_control_img', 'shipping_variant_img']:
+            if key in st.session_state:
+                st.session_state.pop(key, None)
+                
+        logger.info(f"New control image detected: {current_control_filename}. Cache cleared.")
+
+if control_layout_file:
+    st.sidebar.info("Note: Your uploaded image is used for analysis only. The actual slide will use a generated shipping option mockup.")
 segment = st.sidebar.text_input("3. Target Segment", placeholder="e.g., First-time mobile users")
 test_type = st.sidebar.text_input("4. Test Description", placeholder="e.g., Price Test — Control: $7.95 | Variant: $5.00")
 with st.sidebar.expander("🔧 Advanced Options"):
@@ -776,7 +1266,8 @@ required_inputs_present = bool(test_type and segment and control_layout_file)
 generate_button = st.sidebar.button("🚀 Generate A/B Test Slide", type="primary", disabled=not required_inputs_present, use_container_width=True)
 if not required_inputs_present: st.sidebar.warning("Please provide all required inputs (2, 3, 4). Supporting data (1) is optional.")
 
-# --- Generation Logic ---
+# --- Combined Fix for both the price issue and fresh image handling ---
+
 if generate_button:
     # CLEAR ALL PREVIOUS STATE - be thorough to avoid caching issues
     # We need to completely reset all state variables to ensure clean processing
@@ -829,27 +1320,26 @@ if generate_button:
             else:
                 logger.info("No supporting data file provided.")
 
-            # --- Process Control Layout Image (Required) ---
+            # --- Process Control Layout Image and Extract Prices ---
             logger.info("Processing control layout file...")
-            # CRITICAL FIX: Force reading the control image directly from the file
             if not control_layout_file:
                 logger.error("No control layout file provided!")
                 st.error("Control Layout Image is required. Please upload an image file.")
-                st.session_state.error_message = "Missing Control Layout Image."
+                st.session_state["error_message"] = "Missing Control Layout Image."
                 st.stop()
-            
-            # CRITICAL FIX: Always read fresh bytes from the uploaded file with NO caching
+
+            # Always read fresh bytes from the uploaded file
             control_file_bytes = control_layout_file.getvalue()
             if not control_file_bytes:
                 logger.error("Control layout file is empty!")
                 st.error("The uploaded Control Layout Image appears to be empty.")
-                st.session_state.error_message = "Empty Control Layout Image."
+                st.session_state["error_message"] = "Empty Control Layout Image."
                 st.stop()
                 
             # Create a fresh BytesIO object from the file bytes
             control_bytes_io = io.BytesIO(control_file_bytes)
-            
-            # Open a completely fresh image from the bytes - save this as reference only
+
+            # Open a completely fresh image from the bytes
             try:
                 control_image_input_pil = Image.open(control_bytes_io)
                 # Make a copy to ensure we don't have reference issues
@@ -858,10 +1348,10 @@ if generate_button:
             except Exception as img_error:
                 logger.error(f"Failed to open control image: {img_error}")
                 st.error("Failed to open the Control Layout Image file.")
-                st.session_state.error_message = f"Control Image Error: {img_error}"
+                st.session_state["error_message"] = f"Control Image Error: {img_error}"
                 st.stop()
-            
-            # Extract text from the image directly here if needed
+
+            # Extract text from the image directly here
             extracted_text = pytesseract.image_to_string(
                 cv2.threshold(
                     cv2.cvtColor(
@@ -872,74 +1362,130 @@ if generate_button:
                 )[1]
             )
             logger.info(f"Extracted {len(extracted_text)} characters from control image")
-            
-            # Store raw bytes for debugging
-            st.session_state.control_raw_bytes = control_file_bytes
-            
+
             # Store the current filename to track changes
             current_filename = getattr(control_layout_file, 'name', 'unknown')
             previous_filename = st.session_state.get('control_image_filename')
             if current_filename != previous_filename:
                 logger.info(f"New control image detected: '{current_filename}' (previously: '{previous_filename}')")
-                st.session_state.control_image_filename = current_filename
-            
-            logger.info(f"Successfully processed control image from file upload: {current_filename}")
+                st.session_state["control_image_filename"] = current_filename
 
             # --- Extract prices from test description ---
             logger.info("Extracting prices for shipping options...")
             old_price_str, new_price_str = extract_prices_from_test_type(test_type)
             logger.info(f"Extracted prices from test description: Control={old_price_str}, Variant={new_price_str}")
 
-            # --- DETERMINE APPROACH: Use uploaded image OR generate fresh images ---
-            # Check if this is a shipping price test - if yes, use generated images with correct prices
-            is_shipping_price_test = any(word in test_type.lower() for word in ["shipping", "price", "cost", "$", "delivery", "fee"])
+            # --- Create control and variant images based on the uploaded image ---
+            logger.info("Creating control and variant images based on uploaded image with price changes")
+
+            # Start with copies of the uploaded image
+            control_shipping_img = control_image_input_pil.copy()
+            variant_shipping_img = control_image_input_pil.copy()
+
+            # Function to find and replace price text in an image
             
-            # Always use image generation for shipping price tests to ensure prices are shown correctly
-            if is_shipping_price_test:
-                logger.info(f"Detected shipping price test - generating fresh shipping option images")
+            def replace_price_in_image(img, old_price_pattern, new_price_text):
+                """Find and replace price text in the image using draw operations"""
+                img_copy = img.copy()
+                img_width, img_height = img_copy.size
                 
-                # Use timestamp-based generation to avoid any caching issues
-                timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
-                logger.info(f"Using timestamp {timestamp} to ensure fresh image generation")
+                # Attempt to find price locations using OCR
+                # First convert to grayscale for better text detection
+                img_gray = cv2.cvtColor(np.array(img_copy), cv2.COLOR_RGB2GRAY)
                 
-                # Generate fresh control and variant images with the correct prices
-                control_shipping_img, variant_shipping_img = generate_shipping_options(old_price_str, new_price_str)
+                # Use pytesseract to get detailed OCR data including bounding boxes
+                ocr_data = pytesseract.image_to_data(img_gray, output_type=pytesseract.Output.DICT)
                 
-                # Verify the images were generated properly
-                if not isinstance(control_shipping_img, Image.Image) or not isinstance(variant_shipping_img, Image.Image):
-                    logger.error("Failed to generate shipping images with correct prices")
-                    st.error("Failed to generate shipping images with the specified prices.")
-                    st.session_state.error_message = "Image generation failed. Please try again."
-                    st.stop()
+                # Look for price patterns in the OCR text
+                price_found = False
+                for i, text in enumerate(ocr_data['text']):
+                    # Check if this text matches a price pattern - either exact match or contains $ symbol
+                    if text and ('$' in text or re.match(r'\$?\d+\.\d+', text)):
+                        logger.info(f"Found potential price text: '{text}' at index {i}")
+                        
+                        # Get the bounding box for this text
+                        x = ocr_data['left'][i]
+                        y = ocr_data['top'][i]
+                        w = ocr_data['width'][i]
+                        h = ocr_data['height'][i]
+                        
+                        # Check if the box is sensible
+                        if w > 0 and h > 0 and x >= 0 and y >= 0:
+                            # Create a drawable canvas
+                            draw = ImageDraw.Draw(img_copy)
+                            
+                            # Create a background rectangle to cover the old text
+                            padding = 2  # Add padding around text
+                            draw.rectangle(
+                                [(x-padding, y-padding), (x+w+padding, y+h+padding)],
+                                fill=(255, 255, 255, 0)  # White background
+                            )
+                            
+                            # Get a font similar to what's in the image
+                            try:
+                                font_size = h
+                                font = ImageFont.truetype("Arial", font_size)
+                            except:
+                                font = ImageFont.load_default()
+                            
+                            # Draw the new price text
+                            draw.text((x, y), new_price_text, fill=(0, 0, 0), font=font)
+                            price_found = True
+                            logger.info(f"Replaced price '{text}' with '{new_price_text}' at position ({x}, {y})")
+                            break  # Just replace the first found price for simplicity
+                
+                if not price_found:
+                    logger.warning(f"No price text found in the image. Adding price overlay.")
+                    # If no price was found, add an overlay with the price in a visible location
+                    draw = ImageDraw.Draw(img_copy)
+                    try:
+                        font = ImageFont.truetype("Arial", 24)
+                    except:
+                        font = ImageFont.load_default()
                     
-                logger.info(f"Successfully generated control image with price {old_price_str}: {control_shipping_img.size}")
-                logger.info(f"Successfully generated variant image with price {new_price_str}: {variant_shipping_img.size}")
+                    # Add a price overlay in the top right
+                    overlay_text = f"Price: {new_price_text}"
+                    text_width = font.getbbox(overlay_text)[2] if hasattr(font, 'getbbox') else font.getsize(overlay_text)[0]
+                    text_x = img_width - text_width - 20
+                    text_y = 20
+                    
+                    # Add background for readability
+                    padding = 5
+                    draw.rectangle(
+                        [(text_x-padding, text_y-padding), 
+                        (text_x+text_width+padding, text_y+font.getbbox(overlay_text)[3]+padding if hasattr(font, 'getbbox') else text_y+font.getsize(overlay_text)[1]+padding)],
+                        fill=(244, 250, 252),
+                        outline=(0, 0, 0)
+                    )
+                    
+                    # Draw the text
+                    draw.text((text_x, text_y), overlay_text, fill=(0, 0, 0), font=font)
                 
-                # Store the image generation method for display/info
-                image_source_method = "generated"
-            else:
-                # For non-shipping/price tests, use the uploaded control image directly
-                logger.info("Using uploaded image as control (non-shipping/price test)")
+                return img_copy
+
+            # Try to replace prices in both images
+            try:
+                # Use the price from the test description for the control image
+                control_shipping_img = replace_price_in_image(control_shipping_img, None, old_price_str)
+                logger.info(f"Set control image price to {old_price_str}")
                 
-                # Use uploaded image directly - no caching issues because we're using fresh copies
-                control_shipping_img = control_image_input_pil.copy()
+                # Use the variant price for the variant image
+                variant_shipping_img = replace_price_in_image(variant_shipping_img, None, new_price_str)
+                logger.info(f"Set variant image price to {new_price_str}")
                 
-                # Create variant by copying control and adding a label
-                variant_shipping_img = control_shipping_img.copy()
+                # Add a VARIANT label to the variant image
                 variant_width, variant_height = variant_shipping_img.size
                 draw = ImageDraw.Draw(variant_shipping_img)
                 
                 # Add "VARIANT" label at the top right corner
                 try:
-                    # Try to get a font
-                    font = ImageFont.truetype("Arial", 20)
+                    font = ImageFont.truetype("Arial", 16)
                 except:
-                    # Fall back to default font
                     font = ImageFont.load_default()
                     
                 # Draw a rectangle with text for the variant indicator
-                rect_width = 100
-                rect_height = 30
+                rect_width = 82
+                rect_height = 23
                 rect_x = variant_width - rect_width - 10  # 10px from the right edge
                 rect_y = 10  # 10px from the top
                 
@@ -957,10 +1503,18 @@ if generate_button:
                 text_y = rect_y + 5
                 draw.text((text_x, text_y), "VARIANT", fill=(255, 0, 0), font=font)
                 
-                logger.info(f"Created variant image by copying control and adding VARIANT label: {variant_shipping_img.size}")
+                logger.info("Added VARIANT label to the variant image")
+                image_source_method = "uploaded_with_price_edit"
                 
-                # Store the image generation method for display/info
-                image_source_method = "uploaded"
+            except Exception as e:
+                logger.error(f"Error modifying uploaded images with prices: {e}")
+                logger.info("Falling back to generating fresh shipping images with prices")
+                
+                # Fallback to generated images if price replacement fails
+                control_shipping_img, variant_shipping_img = generate_shipping_options(old_price_str, new_price_str)
+                image_source_method = "generated_fallback"
+
+            logger.info(f"Successfully created control and variant images with prices: Control={old_price_str}, Variant={new_price_str}")
 
             # --- Generate Slide Content ---
             logger.info("Generating slide text content (hypothesis, kpis, etc.)...")
@@ -1106,7 +1660,8 @@ if st.session_state.slide_generated and st.session_state.output_buffer:
             st.markdown("---")
             if st.button("✨ Create Another Slide"):
                 logger.info("Clearing session state for new slide.")
-                keys_to_clear = ['slide_generated', 'output_buffer', 'slide_data', 'error_message']
+                keys_to_clear = ['slide_generated', 'output_buffer', 'slide_data', 'error_message', 
+                                'control_image_data', 'control_image_filename']
                 for key in keys_to_clear:
                     st.session_state.pop(key, None)
                 st.rerun()
@@ -1166,4 +1721,6 @@ elif not st.session_state.error_message and not generate_button:
 # --- Custom Footer ---
 footer_year = datetime.datetime.now().year; footer_left_text = "PDQ A/B Test Slide Generator | Streamlining Test Documentation"; footer_right_text = f"PDQ © {footer_year}"
 st.markdown(f"""<div class="custom-footer"><div class="footer-left">{footer_left_text}</div><div class="footer-right">{footer_right_text}</div></div>""", unsafe_allow_html=True)
-
+              
+              
+              
