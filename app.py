@@ -778,11 +778,19 @@ if not required_inputs_present: st.sidebar.warning("Please provide all required 
 
 # --- Generation Logic ---
 if generate_button:
-    st.session_state.slide_generated = False # Reset state before generation
+    # CLEAR ALL PREVIOUS STATE - be thorough to avoid caching issues
+    # We need to completely reset all state variables to ensure clean processing
+    for key in list(st.session_state.keys()):
+        if key not in ['control_image_filename']:  # Keep only the filename tracking
+            st.session_state.pop(key, None)
+    
+    # Initialize fresh state
+    st.session_state.slide_generated = False
     st.session_state.output_buffer = None
     st.session_state.slide_data = {}
-    st.session_state.error_message = None   # Clear previous errors
-    logger.info("Generate button clicked. Starting process...")
+    st.session_state.error_message = None
+    
+    logger.info("Generate button clicked. Starting process with completely fresh state...")
 
     with st.spinner("⚙️ Processing inputs and generating slide..."):
         try: # Wrap the entire generation process
@@ -823,32 +831,136 @@ if generate_button:
 
             # --- Process Control Layout Image (Required) ---
             logger.info("Processing control layout file...")
-            _, control_image_input_pil = extract_text_from_image(control_layout_file)
-            if not isinstance(control_image_input_pil, Image.Image):
-                 logger.error("Failed to process control layout image. Cannot generate.")
-                 st.error("Failed to read the Control Layout Image. Please check the file and try again.")
-                 st.session_state.error_message = "Failed to read Control Layout Image."
-                 st.stop()
+            # CRITICAL FIX: Force reading the control image directly from the file
+            if not control_layout_file:
+                logger.error("No control layout file provided!")
+                st.error("Control Layout Image is required. Please upload an image file.")
+                st.session_state.error_message = "Missing Control Layout Image."
+                st.stop()
+            
+            # CRITICAL FIX: Always read fresh bytes from the uploaded file with NO caching
+            control_file_bytes = control_layout_file.getvalue()
+            if not control_file_bytes:
+                logger.error("Control layout file is empty!")
+                st.error("The uploaded Control Layout Image appears to be empty.")
+                st.session_state.error_message = "Empty Control Layout Image."
+                st.stop()
+                
+            # Create a fresh BytesIO object from the file bytes
+            control_bytes_io = io.BytesIO(control_file_bytes)
+            
+            # Open a completely fresh image from the bytes - save this as reference only
+            try:
+                control_image_input_pil = Image.open(control_bytes_io)
+                # Make a copy to ensure we don't have reference issues
+                control_image_input_pil = control_image_input_pil.copy()
+                logger.info(f"Successfully opened fresh control image: {control_image_input_pil.size}")
+            except Exception as img_error:
+                logger.error(f"Failed to open control image: {img_error}")
+                st.error("Failed to open the Control Layout Image file.")
+                st.session_state.error_message = f"Control Image Error: {img_error}"
+                st.stop()
+            
+            # Extract text from the image directly here if needed
+            extracted_text = pytesseract.image_to_string(
+                cv2.threshold(
+                    cv2.cvtColor(
+                        np.array(control_image_input_pil), 
+                        cv2.COLOR_RGB2GRAY
+                    ), 
+                    0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
+                )[1]
+            )
+            logger.info(f"Extracted {len(extracted_text)} characters from control image")
+            
+            # Store raw bytes for debugging
+            st.session_state.control_raw_bytes = control_file_bytes
+            
+            # Store the current filename to track changes
+            current_filename = getattr(control_layout_file, 'name', 'unknown')
+            previous_filename = st.session_state.get('control_image_filename')
+            if current_filename != previous_filename:
+                logger.info(f"New control image detected: '{current_filename}' (previously: '{previous_filename}')")
+                st.session_state.control_image_filename = current_filename
+            
+            logger.info(f"Successfully processed control image from file upload: {current_filename}")
 
-            # --- Generate Shipping Option Images ---
+            # --- Extract prices from test description ---
             logger.info("Extracting prices for shipping options...")
-            prices = re.findall(r'\$(\d+\.?\d*)', test_type)
-            old_price_str = f"${prices[0]}" if prices else "$7.95"
-            new_price_str = f"${prices[1]}" if len(prices) > 1 else "$5.00"
-            logger.info(f"Generating shipping option images with prices: Control={old_price_str}, Variant={new_price_str}")
-            control_shipping_img, variant_shipping_img = generate_shipping_options(old_price_str, new_price_str)
-            logger.info("Shipping images generated (using html2image).")
+            old_price_str, new_price_str = extract_prices_from_test_type(test_type)
+            logger.info(f"Extracted prices from test description: Control={old_price_str}, Variant={new_price_str}")
 
-            if not isinstance(control_shipping_img, Image.Image):
-                logger.error("Control shipping image generation failed. Cannot proceed.")
-                st.error("Failed to generate the Control shipping image preview.")
-                st.session_state.error_message = "Control shipping image generation failed."
-                st.stop()
-            if not isinstance(variant_shipping_img, Image.Image):
-                logger.error("Variant shipping image generation failed. Cannot proceed.")
-                st.error("Failed to generate the Variant shipping image preview.")
-                st.session_state.error_message = "Variant shipping image generation failed."
-                st.stop()
+            # --- DETERMINE APPROACH: Use uploaded image OR generate fresh images ---
+            # Check if this is a shipping price test - if yes, use generated images with correct prices
+            is_shipping_price_test = any(word in test_type.lower() for word in ["shipping", "price", "cost", "$", "delivery", "fee"])
+            
+            # Always use image generation for shipping price tests to ensure prices are shown correctly
+            if is_shipping_price_test:
+                logger.info(f"Detected shipping price test - generating fresh shipping option images")
+                
+                # Use timestamp-based generation to avoid any caching issues
+                timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
+                logger.info(f"Using timestamp {timestamp} to ensure fresh image generation")
+                
+                # Generate fresh control and variant images with the correct prices
+                control_shipping_img, variant_shipping_img = generate_shipping_options(old_price_str, new_price_str)
+                
+                # Verify the images were generated properly
+                if not isinstance(control_shipping_img, Image.Image) or not isinstance(variant_shipping_img, Image.Image):
+                    logger.error("Failed to generate shipping images with correct prices")
+                    st.error("Failed to generate shipping images with the specified prices.")
+                    st.session_state.error_message = "Image generation failed. Please try again."
+                    st.stop()
+                    
+                logger.info(f"Successfully generated control image with price {old_price_str}: {control_shipping_img.size}")
+                logger.info(f"Successfully generated variant image with price {new_price_str}: {variant_shipping_img.size}")
+                
+                # Store the image generation method for display/info
+                image_source_method = "generated"
+            else:
+                # For non-shipping/price tests, use the uploaded control image directly
+                logger.info("Using uploaded image as control (non-shipping/price test)")
+                
+                # Use uploaded image directly - no caching issues because we're using fresh copies
+                control_shipping_img = control_image_input_pil.copy()
+                
+                # Create variant by copying control and adding a label
+                variant_shipping_img = control_shipping_img.copy()
+                variant_width, variant_height = variant_shipping_img.size
+                draw = ImageDraw.Draw(variant_shipping_img)
+                
+                # Add "VARIANT" label at the top right corner
+                try:
+                    # Try to get a font
+                    font = ImageFont.truetype("Arial", 20)
+                except:
+                    # Fall back to default font
+                    font = ImageFont.load_default()
+                    
+                # Draw a rectangle with text for the variant indicator
+                rect_width = 100
+                rect_height = 30
+                rect_x = variant_width - rect_width - 10  # 10px from the right edge
+                rect_y = 10  # 10px from the top
+                
+                # White background
+                draw.rectangle(
+                    [(rect_x, rect_y), (rect_x + rect_width, rect_y + rect_height)],
+                    fill=(255, 255, 255),
+                    outline=(255, 0, 0),
+                    width=2
+                )
+                
+                # Add "VARIANT" text in red
+                text_width = font.getbbox("VARIANT")[2] if hasattr(font, 'getbbox') else font.getsize("VARIANT")[0]
+                text_x = rect_x + (rect_width - text_width) // 2
+                text_y = rect_y + 5
+                draw.text((text_x, text_y), "VARIANT", fill=(255, 0, 0), font=font)
+                
+                logger.info(f"Created variant image by copying control and adding VARIANT label: {variant_shipping_img.size}")
+                
+                # Store the image generation method for display/info
+                image_source_method = "uploaded"
 
             # --- Generate Slide Content ---
             logger.info("Generating slide text content (hypothesis, kpis, etc.)...")
@@ -888,12 +1000,25 @@ if generate_button:
 
             # --- Update Session State (even if PPTX failed, for preview/debug) ---
             st.session_state.slide_data = {
-                 "title": f"AB Test: {parsed_title}", "segment": segment, "test_type": test_type,
-                 "control_image": control_shipping_img, "variant_image": variant_shipping_img,
-                 "supporting_data_image": supporting_data_image, "raw_control_image": control_image_input_pil,
-                 "metrics": metrics, "hypothesis": hypothesis, "goal": goal, "kpi": kpi, "impact": impact, "tags": tags, "success_criteria": success_criteria,
+                 "title": f"AB Test: {parsed_title}", 
+                 "segment": segment, 
+                 "test_type": test_type,
+                 "control_image": control_shipping_img, 
+                 "variant_image": variant_shipping_img,
+                 "supporting_data_image": supporting_data_image, 
+                 "raw_control_image": control_image_input_pil,
+                 "metrics": metrics, 
+                 "hypothesis": hypothesis, 
+                 "goal": goal, 
+                 "kpi": kpi, 
+                 "impact": impact, 
+                 "tags": tags, 
+                 "success_criteria": success_criteria,
+                 "control_price": old_price_str, 
+                 "variant_price": new_price_str,
+                 "image_source_method": image_source_method
             }
-            logger.info("Session state updated.")
+            logger.info(f"Session state updated with {image_source_method} images and price information.")
 
         except Exception as e:
             st.error(f"❌ An unexpected error occurred during slide generation: {e}")
@@ -904,7 +1029,6 @@ if generate_button:
 
         logger.info("Attempting st.rerun() to update UI.")
         st.rerun()
-
 
 # --- Display Results Section ---
 if st.session_state.slide_generated and st.session_state.output_buffer:
