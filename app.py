@@ -827,7 +827,7 @@ class PDQSlideGeneratorHelper:
 
 # --- NEW FUNCTION: Ensure fresh control image processing ---
 def ensure_fresh_control_image(control_layout_file):
-    """Ensures that we always process a fresh control image without caching issues."""
+    """Ensures that we always process a fresh control image with consistent size."""
     if control_layout_file is None:
         logger.warning("No control layout file provided.")
         return None
@@ -838,10 +838,34 @@ def ensure_fresh_control_image(control_layout_file):
     if not isinstance(control_image_input_pil, Image.Image):
         logger.error("Failed to process control layout image.")
         return None
+    
+    # Add image resizing to ensure consistent size
+    # Target size that works well with the font sizes in HTML
+    target_width = 600
+    target_height = 350
+    
+    # Resize the image while maintaining aspect ratio
+    original_width, original_height = control_image_input_pil.size
+    logger.info(f"Original image size: {original_width}x{original_height}")
+    
+    # Only resize if needed (image is too small)
+    if original_width < target_width or original_height < target_height:
+        logger.info(f"Resizing image to minimum dimensions {target_width}x{target_height}")
         
-    logger.info(f"Successfully processed fresh control image with size: {control_image_input_pil.size if control_image_input_pil else 'None'}")
+        # Calculate new dimensions maintaining aspect ratio
+        ratio = max(target_width / original_width, target_height / original_height)
+        new_width = int(original_width * ratio)
+        new_height = int(original_height * ratio)
+        
+        # Resize the image
+        resized_image = control_image_input_pil.resize((new_width, new_height), Image.LANCZOS)
+        logger.info(f"Resized image to {new_width}x{new_height}")
+        
+        # Use the resized image
+        control_image_input_pil = resized_image
+    
+    logger.info(f"Final control image size: {control_image_input_pil.size}")
     return control_image_input_pil
-
 # --- PowerPoint Generation Function ---
 def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, elements_tags,
                        timeline_str, success_criteria, checkouts_required_str,
