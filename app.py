@@ -397,14 +397,7 @@ def extract_metrics_from_supporting_data(image_obj):
         logger.error(f"Metric extraction error: {e}", exc_info=True)
         return internal_default_metrics
 
-# --- HTML Variant Generation ---
-# Kept as is, relates to variant generation, not control image handling
 def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_variant=False):
-    """ Generate HTML content for shipping options display """
-    # NOTE: The variant label in the HTML itself is kept for the image generation
-    # but the corresponding label in the PPTX will be removed later.
-
-    # The changes go INSIDE this multi-line f-string below:
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -425,12 +418,11 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
 
     /* --- MODIFY FONT SIZE HERE --- */
     .shipping-price {{
-        font-weight: 600;
-        /* font-size: 14px; */  /* Comment out or remove the original */
-        font-size: 20px;      /* << NEW FONT SIZE (Adjust 15px/16px as needed) */
+        font-weight: 700;  /* Changed from 600 to 700 for better visibility */
+        font-size: 24px;  /* Significantly increased from 20px */
         text-align: right;
-        min-width: 60px;
-        color: #333;
+        min-width: 70px;  /* Increased from 60px */
+        color: #000;      /* Changed from #333 to black for better contrast */
         margin-left: 10px;
     }}
 
@@ -444,10 +436,9 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
         background-color: {PDQ_COLORS['white']};
         border: 1px solid {PDQ_COLORS['electric_violet']};
         color: {PDQ_COLORS['electric_violet']};
-        font-weight: 600;
-        /* font-size: 9px; */   /* Comment out or remove the original */
-        font-size: 12px;       /* << NEW FONT SIZE (Adjust 10px/11px as needed) */
-        padding: 2px 5px;
+        font-weight: 700;  /* Changed from 600 */
+        font-size: 14px;   /* Increased from 12px */
+        padding: 3px 6px;  /* Slightly larger padding */
         border-radius: 3px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -480,10 +471,15 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
 </html>"""
     return html
 
-# Kept as is
-def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 350)): # Increased height
+def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 350)):
     """ Convert HTML content to an image using html2image """
     try:
+        # Ensure minimum size - this prevents tiny font rendering
+        min_width, min_height = 600, 350
+        actual_width = max(size[0], min_width)
+        actual_height = max(size[1], min_height)
+        size = (actual_width, actual_height)
+        
         temp_dir = tempfile.gettempdir()
         # Add --headless=new flag as suggested by Chrome error logs
         hti = Html2Image(output_path=temp_dir, size=size, custom_flags=['--headless=new', '--no-sandbox', '--disable-gpu'])
