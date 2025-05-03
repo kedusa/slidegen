@@ -91,6 +91,9 @@ def get_font(name, size, bold=False, italic=False):
     except AttributeError: # Older PIL might not support size argument for load_default
         return ImageFont.load_default()
 
+
+
+
 # --- Streamlit Page Setup & CSS ---
 # DO NOT CHANGE - UI and Theme are fixed
 st.set_page_config(page_title="PDQ A/B Test Slide Generator", page_icon="🧪", layout="wide")
@@ -397,89 +400,19 @@ def extract_metrics_from_supporting_data(image_obj):
         logger.error(f"Metric extraction error: {e}", exc_info=True)
         return internal_default_metrics
 
+# --- HTML Variant Generation ---
+# Kept as is, relates to variant generation, not control image handling
 def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_variant=False):
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-<style>
-    body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }}
-    .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }}
-    h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }}
-    .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }}
-    .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }}
-    .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }}
-    .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }}
-    .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }}
-    .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }}
-    .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }}
-    .shipping-details {{ flex-grow: 1; }}
-    .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }}
-    .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }}
-
-    /* --- MODIFY FONT SIZE HERE --- */
-    .shipping-price {{
-        font-weight: 700;  /* Changed from 600 to 700 for better visibility */
-        font-size: 24px;  /* Significantly increased from 20px */
-        text-align: right;
-        min-width: 70px;  /* Increased from 60px */
-        color: #000;      /* Changed from #333 to black for better contrast */
-        margin-left: 10px;
-    }}
-
-    .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }}
-
-    /* --- AND MODIFY FONT SIZE HERE --- */
-    .variant-label {{
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background-color: {PDQ_COLORS['white']};
-        border: 1px solid {PDQ_COLORS['electric_violet']};
-        color: {PDQ_COLORS['electric_violet']};
-        font-weight: 700;  /* Changed from 600 */
-        font-size: 14px;   /* Increased from 12px */
-        padding: 3px 6px;  /* Slightly larger padding */
-        border-radius: 3px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-</style>
-</head>
-<body>
-    <div class="container">
-        <h2>Shipping method</h2>
-        {f'<div class="variant-label">VARIANT</div>' if is_variant else ''}
-        <div class="shipping-option selected">
-            <div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div>
-            <div class="shipping-details">
-                <div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div>
-                <div class="shipping-subtitle">Please allow 1-2 business days for order processing</div>
-            </div>
-            <div class="shipping-price">{standard_price}</div>
-        </div>
-        <div class="shipping-option">
-            <div class="radio radio-unselected"><div class="radio-dot"></div></div>
-            <div class="shipping-details">
-                <div class="shipping-title">Rush Shipping* (2 Business Days)</div>
-                <div class="shipping-subtitle">Please allow 1-2 business days for order processing</div>
-            </div>
-            <div class="shipping-price">{rush_price}</div>
-        </div>
-        <div class="footnote">*Includes $1.49 processing fee</div>
-    </div>
-</body>
-</html>"""
+    """ Generate HTML content for shipping options display """
+    # NOTE: The variant label in the HTML itself is kept for the image generation
+    # but the corresponding label in the PPTX will be removed later.
+    html = f"""<!DOCTYPE html><html><head><style> body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }} .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }} h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }} .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }} .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }} .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }} .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }} .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }} .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }} .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }} .shipping-details {{ flex-grow: 1; }} .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }} .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }} .shipping-price {{ font-weight: 600; font-size: 14px; text-align: right; min-width: 60px; color: #333; margin-left: 10px; }} .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }} .variant-label {{ position: absolute; top: 10px; right: 10px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['electric_violet']}; color: {PDQ_COLORS['electric_violet']}; font-weight: 600; font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }} </style></head><body><div class="container"><h2>Shipping method</h2>{f'<div class="variant-label">VARIANT</div>' if is_variant else ''}<div class="shipping-option selected"><div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div><div class="shipping-details"><div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{standard_price}</div></div><div class="shipping-option"><div class="radio radio-unselected"><div class="radio-dot"></div></div><div class="shipping-details"><div class="shipping-title">Rush Shipping* (2 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{rush_price}</div></div><div class="footnote">*Includes $1.49 processing fee</div></div></body></html>"""
     return html
 
-def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 350)):
+# Kept as is
+def html_to_image(html_content, output_path="temp_shipping_image.png", size=(600, 350)): # Increased height
     """ Convert HTML content to an image using html2image """
     try:
-        # Ensure minimum size - this prevents tiny font rendering
-        min_width, min_height = 600, 350
-        actual_width = max(size[0], min_width)
-        actual_height = max(size[1], min_height)
-        size = (actual_width, actual_height)
-        
         temp_dir = tempfile.gettempdir()
         # Add --headless=new flag as suggested by Chrome error logs
         hti = Html2Image(output_path=temp_dir, size=size, custom_flags=['--headless=new', '--no-sandbox', '--disable-gpu'])
@@ -584,105 +517,265 @@ def extract_prices_from_test_type(test_type):
     logger.info(f"Final extracted prices: Control={control_price_str}, Variant={variant_price_str}")
     return control_price_str, variant_price_str
 # Kept as is
-def generate_shipping_options(old_price="$7.95", new_price="$5.00"):
-    """ Generate control and variant shipping option images """
-    logger.info(f"Generating shipping HTML for control and variant with prices: control={old_price}, variant={new_price}")
-    # Create a unique timestamp for this generation
-    timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
-
-    # Generate unique filenames with timestamp
-    control_filename = f"control_shipping_{timestamp}.png"
-    variant_filename = f"variant_shipping_{timestamp}.png"
-
-    control_html = generate_shipping_html(old_price, "$24.95", is_variant=False)
-    variant_html = generate_shipping_html(new_price, "$24.95", is_variant=True)
-    logger.info("Converting HTML to images...")
-
-    # Use the timestamped filenames
-    control_image = html_to_image(control_html, output_path=control_filename)
-    variant_image = html_to_image(variant_html, output_path=variant_filename)
-
-    # Log the image sizes after generation
-    logger.info(f"Generated control shipping image with price {old_price} and size: {control_image.size if control_image else 'None'}")
-    logger.info(f"Generated variant shipping image with price {new_price} and size: {variant_image.size if variant_image else 'None'}")
-
-    logger.info("Shipping option image generation complete.")
+def generate_shipping_options(old_price="$7.95", new_price="$5.00", control_image_input=None):
+    """Generate consistent control and variant shipping option images with font size matching uploaded image"""
+    logger.info(f"Generating shipping images with prices: control={old_price}, variant={new_price}")
+    
+    # Create two blank canvases with fixed dimensions
+    width, height = 600, 350  # Fixed size for consistency
+    control_image = Image.new('RGB', (width, height), color=(255, 255, 255))
+    variant_image = control_image.copy()
+    
+    # Determine appropriate font size based on uploaded image dimensions if available
+    base_font_size = 28  # Default base font size
+    if control_image_input and isinstance(control_image_input, Image.Image):
+        # If the uploaded image is smaller, use a proportionally smaller font
+        # If it's larger, cap the font size to prevent it from being too large
+        img_width, img_height = control_image_input.size
+        width_ratio = img_width / width
+        height_ratio = img_height / height
+        size_ratio = min(width_ratio, height_ratio)
+        
+        # Scale font sizes based on image ratio, with min/max limits
+        # Price font should be 20-28px depending on image size
+        base_font_size = max(24, min(36, int(28 * size_ratio)))
+        logger.info(f"Uploaded image size: {img_width}x{img_height}, Font size ratio: {size_ratio:.2f}, Using base font size: {base_font_size}")
+    else:
+        logger.info(f"No uploaded image or invalid image. Using default base font size: {base_font_size}")
+    
+    # Calculate relative font sizes based on the base font size
+    title_font_size = int(base_font_size * 0.8)  # Title slightly smaller than price
+    normal_font_size = int(base_font_size * 0.65)  # Normal text
+    small_font_size = int(base_font_size * 0.55)  # Small text
+    price_font_size = base_font_size  # Price is the base font size
+    
+    # Try to load fonts with appropriate sizes
+    try:
+        title_font = get_font("Arial", title_font_size, bold=True)
+        normal_font = get_font("Arial", normal_font_size)
+        price_font = get_font("Arial", price_font_size, bold=True)
+        small_font = get_font("Arial", small_font_size)
+    except:
+        # Fallback to default font if custom fonts fail
+        logger.warning("Could not load custom fonts, using default fonts")
+        title_font = normal_font = price_font = small_font = ImageFont.load_default()
+    
+    # Create drawing objects
+    draw_control = ImageDraw.Draw(control_image)
+    draw_variant = ImageDraw.Draw(variant_image)
+    
+    # Draw shipping method title
+    title_text = "Shipping method"
+    draw_control.text((30, 20), title_text, fill=(0, 0, 0), font=title_font)
+    draw_variant.text((30, 20), title_text, fill=(0, 0, 0), font=title_font)
+    
+    # Draw selected option background - control
+    draw_control.rectangle([(30, 60), (width-30, 140)], outline=(227, 101, 96), fill=(254, 246, 245), width=1)
+    # Draw radio button - control
+    draw_control.ellipse([(45, 85), (65, 105)], outline=(227, 101, 96), fill=(227, 101, 96))
+    draw_control.ellipse([(48, 88), (62, 102)], fill=(255, 255, 255))
+    draw_control.ellipse([(51, 91), (59, 99)], fill=(227, 101, 96))
+    
+    # Draw shipping details - control
+    draw_control.text((80, 75), "Standard Shipping & Processing* (4-7 Business Days)", fill=(0, 0, 0), font=normal_font)
+    draw_control.text((80, 100), "Please allow 1-2 business days for order processing", fill=(100, 100, 100), font=small_font)
+    
+    # Draw price - control (right-aligned)
+    price_width = price_font.getbbox(old_price)[2] if hasattr(price_font, 'getbbox') else price_font.getsize(old_price)[0]
+    draw_control.text((width-45-price_width, 85), old_price, fill=(0, 0, 0), font=price_font)
+    
+    # Draw unselected option background - control
+    draw_control.rectangle([(30, 150), (width-30, 230)], outline=(220, 220, 220), fill=(255, 255, 255), width=1)
+    # Draw radio button - control
+    draw_control.ellipse([(45, 175), (65, 195)], outline=(200, 200, 200), fill=(255, 255, 255), width=1)
+    
+    # Draw shipping details - control
+    draw_control.text((80, 175), "Rush Shipping* (2 Business Days)", fill=(0, 0, 0), font=normal_font)
+    draw_control.text((80, 200), "Please allow 1-2 business days for order processing", fill=(100, 100, 100), font=small_font)
+    
+    # Draw price for rush - control (right-aligned)
+    rush_price = "$24.95"
+    rush_width = price_font.getbbox(rush_price)[2] if hasattr(price_font, 'getbbox') else price_font.getsize(rush_price)[0]
+    draw_control.text((width-45-rush_width, 185), rush_price, fill=(0, 0, 0), font=price_font)
+    
+    # Draw footnote - control
+    draw_control.text((30, 245), "*Includes $1.49 processing fee", fill=(100, 100, 100), font=small_font)
+    
+    # ---- VARIANT IMAGE ---- #
+    
+    # Draw selected option background - variant
+    draw_variant.rectangle([(30, 60), (width-30, 140)], outline=(227, 101, 96), fill=(254, 246, 245), width=1)
+    # Draw radio button - variant
+    draw_variant.ellipse([(45, 85), (65, 105)], outline=(227, 101, 96), fill=(227, 101, 96))
+    draw_variant.ellipse([(48, 88), (62, 102)], fill=(255, 255, 255))
+    draw_variant.ellipse([(51, 91), (59, 99)], fill=(227, 101, 96))
+    
+    # Draw shipping details - variant
+    draw_variant.text((80, 75), "Standard Shipping & Processing* (4-7 Business Days)", fill=(0, 0, 0), font=normal_font)
+    draw_variant.text((80, 100), "Please allow 1-2 business days for order processing", fill=(100, 100, 100), font=small_font)
+    
+    # Draw price - variant (right-aligned)
+    var_price_width = price_font.getbbox(new_price)[2] if hasattr(price_font, 'getbbox') else price_font.getsize(new_price)[0]
+    draw_variant.text((width-45-var_price_width, 85), new_price, fill=(0, 0, 0), font=price_font)
+    
+    # Draw unselected option background - variant
+    draw_variant.rectangle([(30, 150), (width-30, 230)], outline=(220, 220, 220), fill=(255, 255, 255), width=1)
+    # Draw radio button - variant
+    draw_variant.ellipse([(45, 175), (65, 195)], outline=(200, 200, 200), fill=(255, 255, 255), width=1)
+    
+    # Draw shipping details - variant
+    draw_variant.text((80, 175), "Rush Shipping* (2 Business Days)", fill=(0, 0, 0), font=normal_font)
+    draw_variant.text((80, 200), "Please allow 1-2 business days for order processing", fill=(100, 100, 100), font=small_font)
+    
+    # Draw price for rush - variant (right-aligned)
+    rush_width = price_font.getbbox(rush_price)[2] if hasattr(price_font, 'getbbox') else price_font.getsize(rush_price)[0]
+    draw_variant.text((width-45-rush_width, 185), rush_price, fill=(0, 0, 0), font=price_font)
+    
+    # Draw footnote - variant
+    draw_variant.text((30, 245), "*Includes $1.49 processing fee", fill=(100, 100, 100), font=small_font)
+    
+    # Add VARIANT label to variant image
+    label_text = "VARIANT"
+    # Draw a red-outlined box with white background
+    label_width = title_font.getbbox(label_text)[2] if hasattr(title_font, 'getbbox') else title_font.getsize(label_text)[0]
+    label_height = 20
+    draw_variant.rectangle(
+        [(width-40-label_width, 15), (width-30, 15+label_height+5)],
+        outline=(255, 0, 0),
+        fill=(255, 255, 255),
+        width=1
+    )
+    # Draw the VARIANT text in red
+    draw_variant.text((width-35-label_width, 17), label_text, fill=(255, 0, 0), font=small_font)
+    
+    logger.info(f"Generated shipping images with font size {price_font_size}px for prices")
+    
     return control_image, variant_image
 
-# Kept as is
+
 def create_price_variant(old_price, new_price):
     """
-    Create control and variant images based on the HTML template with different prices.
-    This function ensures we use the HTML-based generation for a consistent look.
-
-    Args:
-        old_price: Original price string (e.g. "$7.95") - Used for the control image
-        new_price: New price string (e.g. "$5.00") - Used for the variant image
-
-    Returns:
-        tuple: (control_image, variant_image) as PIL Image objects
+    Create control and variant images with consistent pricing display regardless of image size
     """
-    logger.info(f"Creating HTML-based variant image by changing price from {old_price} (Control) to {new_price} (Variant)")
+    logger.info(f"Creating price variant images: Control={old_price}, Variant={new_price}")
     try:
+        # Start with copies of the uploaded image or create blank images if needed
+        if 'raw_control_image' in st.session_state and isinstance(st.session_state.raw_control_image, Image.Image):
+            control_img = st.session_state.raw_control_image.copy()
+            variant_img = st.session_state.raw_control_image.copy()
+            
+            # Get image dimensions to determine approach
+            width, height = control_img.size
+            
+            # For smaller images, use direct text overlay instead of HTML generation
+            if width < 400 or height < 200:
+                logger.info(f"Small image detected ({width}x{height}). Using direct text overlay.")
+                
+                # Create a white background for prices on both images
+                draw_control = ImageDraw.Draw(control_img)
+                draw_variant = ImageDraw.Draw(variant_img)
+                
+                # Try to load a bold font for prices
+                try:
+                    price_font = get_font("Arial", 24, bold=True)
+                except:
+                    try:
+                        # Fallback to default with larger size
+                        price_font = ImageFont.load_default()
+                    except:
+                        price_font = None
+                
+                # Add price text with background in top right corner
+                if price_font:
+                    # Control image price
+                    price_text = old_price
+                    text_width = price_font.getbbox(price_text)[2] if hasattr(price_font, 'getbbox') else 100
+                    text_x = width - text_width - 20
+                    text_y = 20
+                    
+                    # Add white background for control price
+                    padding = 8
+                    draw_control.rectangle(
+                        [(text_x - padding, text_y - padding), 
+                         (text_x + text_width + padding, text_y + 30)],
+                        fill=(255, 255, 255),
+                        outline=(200, 200, 200)
+                    )
+                    # Draw control price text
+                    draw_control.text((text_x, text_y), price_text, fill=(0, 0, 0), font=price_font)
+                    
+                    # Variant image price
+                    price_text = new_price
+                    text_width = price_font.getbbox(price_text)[2] if hasattr(price_font, 'getbbox') else 100
+                    
+                    # Add white background for variant price
+                    draw_variant.rectangle(
+                        [(text_x - padding, text_y - padding), 
+                         (text_x + text_width + padding, text_y + 30)],
+                        fill=(255, 255, 255),
+                        outline=(200, 200, 200)
+                    )
+                    # Draw variant price text
+                    draw_variant.text((text_x, text_y), price_text, fill=(0, 0, 0), font=price_font)
+                    
+                    # Add VARIANT label to variant image
+                    label_text = "VARIANT"
+                    label_width = price_font.getbbox(label_text)[2] if hasattr(price_font, 'getbbox') else 80
+                    label_x = 20
+                    label_y = 20
+                    
+                    # Add red background for VARIANT label
+                    draw_variant.rectangle(
+                        [(label_x - padding, label_y - padding), 
+                         (label_x + label_width + padding, label_y + 30)],
+                        fill=(255, 255, 255),
+                        outline=(255, 0, 0),
+                        width=2
+                    )
+                    # Draw VARIANT text
+                    draw_variant.text((label_x, label_y), label_text, fill=(255, 0, 0), font=price_font)
+                
+                return control_img, variant_img
+            
+            # For larger images, continue with HTML-based approach
+            logger.info(f"Larger image detected ({width}x{height}). Using HTML generation.")
+        
+        # Original HTML-based approach for larger images
+        control_html = generate_shipping_html(old_price, "$24.95", is_variant=False)
+        variant_html = generate_shipping_html(new_price, "$24.95", is_variant=True)
+        
         # Use the generate_shipping_options function which calls html_to_image
-        # Note: generate_shipping_options as provided earlier seems to use the *first* price for standard shipping
-        # in *both* control and variant HTML, and the *second* price for rush shipping.
-        # Reverting to the interpretation from the original code which mapped old_price to control standard, new_price to variant standard.
-        def generate_shipping_options_html(standard_price_control, standard_price_variant, rush_price="$24.95"):
-            logger.info(f"Generating shipping HTML for control and variant with prices: control_std={standard_price_control}, variant_std={standard_price_variant}, rush={rush_price}")
-            timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
-            control_filename = f"control_shipping_{timestamp}.png"
-            variant_filename = f"variant_shipping_{timestamp}.png"
-
-            # Control HTML: standard shipping is the 'old_price'
-            control_html = generate_shipping_html(standard_price_control, rush_price, is_variant=False)
-            # Variant HTML: standard shipping is the 'new_price'
-            variant_html = generate_shipping_html(standard_price_variant, rush_price, is_variant=True)
-
-            logger.info("Converting HTML to images...")
-            control_image = html_to_image(control_html, output_path=control_filename)
-            variant_image = html_to_image(variant_html, output_path=variant_filename)
-
-            logger.info(f"Generated control shipping image with price {standard_price_control} and size: {control_image.size if control_image else 'None'}")
-            logger.info(f"Generated variant shipping image with price {standard_price_variant} and size: {variant_image.size if variant_image else 'None'}")
-            logger.info("Shipping option image generation complete.")
-            return control_image, variant_image
-
-        # Call the internal HTML generation using the prices
-        control_image, variant_image = generate_shipping_options_html(old_price, new_price)
-
-
-        if not isinstance(control_image, Image.Image) or not isinstance(variant_image, Image.Image):
-            raise ValueError("Failed to generate valid images from HTML")
-
-        logger.info(f"create_price_variant successful. Control size: {control_image.size}, Variant size: {variant_image.size}")
+        control_image = html_to_image(control_html)
+        variant_image = html_to_image(variant_html)
+        
+        logger.info(f"Generated control shipping image with price {old_price} and size: {control_image.size if control_image else 'None'}")
+        logger.info(f"Generated variant shipping image with price {new_price} and size: {variant_image.size if variant_image else 'None'}")
+        
         return control_image, variant_image
-
+        
     except Exception as e:
         logger.error(f"Error in create_price_variant: {e}", exc_info=True)
-        st.error("An error occurred while generating the price variant images.")
         # In case of error, return placeholder images
         size = (600, 350)
         placeholder = Image.new('RGB', size, color=hex_to_rgb(PDQ_COLORS["moon_raker"]))
         draw = ImageDraw.Draw(placeholder)
         try:
-            font = get_font("Arial", 14)
+            font = get_font("Arial", 24, bold=True)
             draw.text((10, 10), f"Error generating price image.", fill=(0,0,0), font=font)
-            draw.text((10, 30), f"Control Price: {old_price}", fill=(0,0,0), font=font)
-            draw.text((10, 50), f"Variant Price: {new_price}", fill=(0,0,0), font=font)
+            draw.text((10, 50), f"Control Price: {old_price}", fill=(0,0,0), font=font)
+            draw.text((10, 90), f"Variant Price: {new_price}", fill=(0,0,0), font=font)
         except:
             draw.text((10, 10), f"Error generating price image.", fill=(0,0,0))
-
+        
         control_copy = placeholder.copy()
         variant_copy = placeholder.copy()
         draw_v = ImageDraw.Draw(variant_copy)
         try:
-            font_bold = get_font("Arial", 16, bold=True)
-            text_width, text_height = draw_v.textbbox((0,0), "VARIANT", font=font_bold)[2:]
-            draw_v.text((size[0] - text_width - 20, 20), "VARIANT", fill=(0,0,0), font=font_bold)
+            font_bold = get_font("Arial", 24, bold=True)
+            draw_v.text((10, 130), "VARIANT", fill=(255,0,0), font=font_bold)
         except:
-            draw_v.text((size[0] - 80, 20), "VARIANT", fill=(0,0,0))
-
+            draw_v.text((10, 130), "VARIANT", fill=(255,0,0))
+        
         return control_copy, variant_copy
 
 # --- PDF Processing ---
@@ -866,6 +959,8 @@ def ensure_fresh_control_image(control_layout_file):
     
     logger.info(f"Final control image size: {control_image_input_pil.size}")
     return control_image_input_pil
+
+
 # --- PowerPoint Generation Function ---
 def create_proper_pptx(title, hypothesis, segment, goal, kpi_impact_str, elements_tags,
                        timeline_str, success_criteria, checkouts_required_str,
@@ -1468,6 +1563,13 @@ if generate_button:
             logger.info("Extracting prices for shipping options...")
             old_price_str, new_price_str = extract_prices_from_test_type(test_type)
             logger.info(f"Extracted prices from test description: Control={old_price_str}, Variant={new_price_str}")
+
+            # Generate shipping options with the correct size and prices
+            control_shipping_img, variant_shipping_img = generate_shipping_options(
+                old_price_str,  # Use the variable name from your code
+                new_price_str,  # Use the variable name from your code
+                control_image_input=control_image_input_pil  # Pass the uploaded image
+            )
 
             # --- Create control and variant images based on the uploaded image ---
             logger.info("Creating control and variant images based on uploaded image with price changes")
