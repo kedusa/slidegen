@@ -427,7 +427,7 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
     .shipping-price {{
         font-weight: 600;
         /* font-size: 14px; */  /* Comment out or remove the original */
-        font-size: 15px;      /* << NEW FONT SIZE (Adjust 15px/16px as needed) */
+        font-size: 20px;      /* << NEW FONT SIZE (Adjust 15px/16px as needed) */
         text-align: right;
         min-width: 60px;
         color: #333;
@@ -446,7 +446,7 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
         color: {PDQ_COLORS['electric_violet']};
         font-weight: 600;
         /* font-size: 9px; */   /* Comment out or remove the original */
-        font-size: 10px;       /* << NEW FONT SIZE (Adjust 10px/11px as needed) */
+        font-size: 12px;       /* << NEW FONT SIZE (Adjust 10px/11px as needed) */
         padding: 2px 5px;
         border-radius: 3px;
         text-transform: uppercase;
