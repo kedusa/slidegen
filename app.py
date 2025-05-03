@@ -403,7 +403,81 @@ def generate_shipping_html(standard_price="$7.95", rush_price="$24.95", is_varia
     """ Generate HTML content for shipping options display """
     # NOTE: The variant label in the HTML itself is kept for the image generation
     # but the corresponding label in the PPTX will be removed later.
-    html = f"""<!DOCTYPE html><html><head><style> body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }} .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }} h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }} .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }} .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }} .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }} .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }} .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }} .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }} .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }} .shipping-details {{ flex-grow: 1; }} .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }} .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }} .shipping-price {{ font-weight: 600; font-size: 14px; text-align: right; min-width: 60px; color: #333; margin-left: 10px; }} .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }} .variant-label {{ position: absolute; top: 10px; right: 10px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['electric_violet']}; color: {PDQ_COLORS['electric_violet']}; font-weight: 600; font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }} </style></head><body><div class="container"><h2>Shipping method</h2>{f'<div class="variant-label">VARIANT</div>' if is_variant else ''}<div class="shipping-option selected"><div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div><div class="shipping-details"><div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{standard_price}</div></div><div class="shipping-option"><div class="radio radio-unselected"><div class="radio-dot"></div></div><div class="shipping-details"><div class="shipping-title">Rush Shipping* (2 Business Days)</div><div class="shipping-subtitle">Please allow 1-2 business days for order processing</div></div><div class="shipping-price">{rush_price}</div></div><div class="footnote">*Includes $1.49 processing fee</div></div></body></html>"""
+
+    # The changes go INSIDE this multi-line f-string below:
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px; box-sizing: border-box; }}
+    .container {{ max-width: 580px; background-color: {PDQ_COLORS['white']}; border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 20px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }}
+    h2 {{ margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: {PDQ_COLORS['black']}; }}
+    .shipping-option {{ border: 1px solid {PDQ_COLORS['html_border']}; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; align-items: flex-start; transition: all 0.2s ease-in-out; }}
+    .shipping-option.selected {{ border-color: {PDQ_COLORS['html_selected_border']}; background-color: {PDQ_COLORS['html_selected_bg']}; }}
+    .radio {{ margin-right: 12px; margin-top: 3px; flex-shrink: 0; }}
+    .radio-dot {{ width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }}
+    .radio-selected .radio-dot {{ background-color: {PDQ_COLORS['html_selected_border']}; }}
+    .radio-selected .radio-dot-inner {{ width: 7px; height: 7px; border-radius: 50%; background-color: white; }}
+    .radio-unselected .radio-dot {{ border: 2px solid {PDQ_COLORS['html_radio_border']}; background-color: white; }}
+    .shipping-details {{ flex-grow: 1; }}
+    .shipping-title {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #333; }}
+    .shipping-subtitle {{ color: {PDQ_COLORS['grey_text']}; font-size: 12px; }}
+
+    /* --- MODIFY FONT SIZE HERE --- */
+    .shipping-price {{
+        font-weight: 600;
+        /* font-size: 14px; */  /* Comment out or remove the original */
+        font-size: 15px;      /* << NEW FONT SIZE (Adjust 15px/16px as needed) */
+        text-align: right;
+        min-width: 60px;
+        color: #333;
+        margin-left: 10px;
+    }}
+
+    .footnote {{ font-size: 12px; color: {PDQ_COLORS['grey_text']}; margin-top: 15px; }}
+
+    /* --- AND MODIFY FONT SIZE HERE --- */
+    .variant-label {{
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: {PDQ_COLORS['white']};
+        border: 1px solid {PDQ_COLORS['electric_violet']};
+        color: {PDQ_COLORS['electric_violet']};
+        font-weight: 600;
+        /* font-size: 9px; */   /* Comment out or remove the original */
+        font-size: 10px;       /* << NEW FONT SIZE (Adjust 10px/11px as needed) */
+        padding: 2px 5px;
+        border-radius: 3px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }}
+</style>
+</head>
+<body>
+    <div class="container">
+        <h2>Shipping method</h2>
+        {f'<div class="variant-label">VARIANT</div>' if is_variant else ''}
+        <div class="shipping-option selected">
+            <div class="radio radio-selected"><div class="radio-dot"><div class="radio-dot-inner"></div></div></div>
+            <div class="shipping-details">
+                <div class="shipping-title">Standard Shipping & Processing* (4-7 Business Days)</div>
+                <div class="shipping-subtitle">Please allow 1-2 business days for order processing</div>
+            </div>
+            <div class="shipping-price">{standard_price}</div>
+        </div>
+        <div class="shipping-option">
+            <div class="radio radio-unselected"><div class="radio-dot"></div></div>
+            <div class="shipping-details">
+                <div class="shipping-title">Rush Shipping* (2 Business Days)</div>
+                <div class="shipping-subtitle">Please allow 1-2 business days for order processing</div>
+            </div>
+            <div class="shipping-price">{rush_price}</div>
+        </div>
+        <div class="footnote">*Includes $1.49 processing fee</div>
+    </div>
+</body>
+</html>"""
     return html
 
 # Kept as is
